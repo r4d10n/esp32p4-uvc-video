@@ -5,10 +5,13 @@
  */
 
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/ioctl.h>
 #include "esp_log.h"
 #include "esp_check.h"
 #include "linux/videodev2.h"
+#include "esp_video_device.h"
 #include "uvc_controls.h"
 
 static const char *TAG = "uvc_ctrl";
@@ -59,4 +62,46 @@ esp_err_t uvc_ctrl_set_jpeg_quality(int m2m_fd, int quality)
 
     return set_ext_ctrl(m2m_fd, V4L2_CID_JPEG_CLASS,
                         V4L2_CID_JPEG_COMPRESSION_QUALITY, quality);
+}
+
+/*
+ * ---- UVC PU control → V4L2 ISP bridge ----
+ *
+ * This function is called from the USB interrupt context (TinyUSB task)
+ * when the host sends a SET_CUR request for a PU control. It opens the
+ * ISP device, applies the V4L2 control, and closes it.
+ *
+ * UVC PU control selectors (must match usb_device_uvc.c definitions):
+ *   0x02 = Brightness   → V4L2_CID_BRIGHTNESS  on ISP
+ *   0x03 = Contrast     → V4L2_CID_CONTRAST    on ISP
+ *   0x06 = Hue          → V4L2_CID_HUE         on ISP
+ *   0x07 = Saturation   → V4L2_CID_SATURATION  on ISP
+ */
+void uvc_pu_control_set_cb(uint8_t cs, int16_t value)
+{
+    uint32_t v4l2_cid;
+    switch (cs) {
+    case 0x02: v4l2_cid = V4L2_CID_BRIGHTNESS; break;
+    case 0x03: v4l2_cid = V4L2_CID_CONTRAST;   break;
+    case 0x06: v4l2_cid = V4L2_CID_HUE;        break;
+    case 0x07: v4l2_cid = V4L2_CID_SATURATION;  break;
+    default:
+        ESP_LOGW(TAG, "Unknown PU cs=0x%02x", cs);
+        return;
+    }
+
+    int fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
+    if (fd < 0) {
+        ESP_LOGW(TAG, "Cannot open ISP for PU control");
+        return;
+    }
+
+    /* Use VIDIOC_S_EXT_CTRLS (same pattern as CCM/WB in camera_pipeline.c) */
+    esp_err_t ret = set_ext_ctrl(fd, V4L2_CID_USER_CLASS, v4l2_cid, (int32_t)value);
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "PU cs=0x%02x → V4L2 0x%08lx = %d",
+                 cs, (unsigned long)v4l2_cid, (int)value);
+    }
+
+    close(fd);
 }

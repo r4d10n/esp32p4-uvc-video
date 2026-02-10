@@ -60,11 +60,15 @@ enum {
     0x00                    /* bmVideoStandards */
 
 /*
- * PU bmControls: No controls advertised (TinyUSB doesn't implement PU
- * control request handlers, so declaring controls causes 5s timeouts
- * per control during Linux UVC driver enumeration).
+ * PU bmControls bitmap (UVC 1.5 spec Table 4-6):
+ *   Byte 0: D0=Brightness, D1=Contrast, D2=Hue, D3=Saturation,
+ *           D4=Sharpness, D5=Gamma, D6=WB Temp, D7=WB Component
+ *   Byte 1: D0=Backlight, D1=Gain, D2=PowerLine, D3=HueAuto, ...
+ *   Byte 2: D0=AnalogVideoStd, D1=AnalogLock, D2=ContrastAuto
+ *
+ * Enable: Brightness(D0), Contrast(D1), Hue(D2), Saturation(D3)
  */
-#define PU_CTRL_BYTE0  0x00
+#define PU_CTRL_BYTE0  0x0F
 #define PU_CTRL_BYTE1  0x00
 #define PU_CTRL_BYTE2  0x00
 

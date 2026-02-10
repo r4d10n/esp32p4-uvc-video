@@ -233,6 +233,116 @@ int tud_video_commit_cb(uint_fast8_t ctl_idx, uint_fast8_t stm_idx,
     return VIDEO_ERROR_NONE;
 }
 
+/*
+ * ---- Processing Unit (PU) control handling ----
+ *
+ * UVC PU controls allow the host to adjust image parameters like
+ * brightness/contrast via v4l2-ctl. TinyUSB's video class has no
+ * built-in PU support, so we handle entity-level control requests
+ * via the tud_video_entity_control_xfer_cb weak callback.
+ *
+ * Each control is 2 bytes (int16_t). The host issues GET_CUR/MIN/MAX/
+ * RES/DEF/INFO and SET_CUR requests.
+ */
+
+/* UVC PU control selectors (UVC 1.5 spec Table A-12) */
+#define PU_BRIGHTNESS_CONTROL   0x02
+#define PU_CONTRAST_CONTROL     0x03
+#define PU_HUE_CONTROL          0x06
+#define PU_SATURATION_CONTROL   0x07
+
+/* Must match UVC_ENTITY_PROCESSING_UNIT in usb_descriptors.h */
+#define PU_ENTITY_ID  0x02
+
+typedef struct {
+    uint8_t  cs;
+    int16_t  cur;
+    int16_t  min;
+    int16_t  max;
+    int16_t  res;
+    int16_t  def;
+} pu_control_t;
+
+static pu_control_t s_pu_controls[] = {
+    { PU_BRIGHTNESS_CONTROL, 0,    -127, 127, 1, 0   },
+    { PU_CONTRAST_CONTROL,   128,  0,    256, 1, 128  },
+    { PU_HUE_CONTROL,        0,    0,    255, 1, 0    },
+    { PU_SATURATION_CONTROL, 128,  0,    256, 1, 128  },
+};
+#define PU_CONTROL_COUNT (sizeof(s_pu_controls) / sizeof(s_pu_controls[0]))
+
+static int16_t s_pu_set_buf;  /* receive buffer for SET_CUR data stage */
+
+/* Weak callback: application overrides to bridge PU controls to hardware */
+TU_ATTR_WEAK void uvc_pu_control_set_cb(uint8_t cs, int16_t value)
+{
+    (void)cs; (void)value;
+}
+
+int tud_video_entity_control_xfer_cb(uint8_t rhport, uint8_t stage,
+                                      tusb_control_request_t const *request,
+                                      uint_fast8_t ctl_idx)
+{
+    (void)ctl_idx;
+    uint8_t entity_id = TU_U16_HIGH(request->wIndex);
+    uint8_t cs = TU_U16_HIGH(request->wValue);
+
+    if (entity_id != PU_ENTITY_ID) {
+        return VIDEO_ERROR_INVALID_REQUEST;
+    }
+
+    /* Find control in table */
+    pu_control_t *ctrl = NULL;
+    for (unsigned i = 0; i < PU_CONTROL_COUNT; i++) {
+        if (s_pu_controls[i].cs == cs) {
+            ctrl = &s_pu_controls[i];
+            break;
+        }
+    }
+    if (!ctrl) {
+        return VIDEO_ERROR_INVALID_REQUEST;
+    }
+
+    if (stage == CONTROL_STAGE_SETUP) {
+        switch (request->bRequest) {
+        case VIDEO_REQUEST_GET_CUR:
+            return tud_control_xfer(rhport, request, &ctrl->cur, sizeof(int16_t))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        case VIDEO_REQUEST_GET_MIN:
+            return tud_control_xfer(rhport, request, &ctrl->min, sizeof(int16_t))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        case VIDEO_REQUEST_GET_MAX:
+            return tud_control_xfer(rhport, request, &ctrl->max, sizeof(int16_t))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        case VIDEO_REQUEST_GET_RES:
+            return tud_control_xfer(rhport, request, &ctrl->res, sizeof(int16_t))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        case VIDEO_REQUEST_GET_DEF:
+            return tud_control_xfer(rhport, request, &ctrl->def, sizeof(int16_t))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        case VIDEO_REQUEST_GET_INFO: {
+            static uint8_t const info = 0x03; /* supports GET and SET */
+            return tud_control_xfer(rhport, request, (uint8_t *)(uintptr_t)&info, sizeof(info))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        }
+        case VIDEO_REQUEST_SET_CUR:
+            return tud_control_xfer(rhport, request, &s_pu_set_buf, sizeof(s_pu_set_buf))
+                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+        default:
+            return VIDEO_ERROR_INVALID_REQUEST;
+        }
+    } else if (stage == CONTROL_STAGE_DATA) {
+        if (request->bRequest == VIDEO_REQUEST_SET_CUR) {
+            if (s_pu_set_buf < ctrl->min) s_pu_set_buf = ctrl->min;
+            if (s_pu_set_buf > ctrl->max) s_pu_set_buf = ctrl->max;
+            ctrl->cur = s_pu_set_buf;
+            ESP_LOGI(TAG, "PU SET_CUR cs=0x%02x val=%d", cs, ctrl->cur);
+            uvc_pu_control_set_cb(cs, ctrl->cur);
+        }
+    }
+    return VIDEO_ERROR_NONE;
+}
+
 esp_err_t uvc_device_config(int index, uvc_device_config_t *config)
 {
     ESP_RETURN_ON_FALSE(index < UVC_CAM_NUM, ESP_ERR_INVALID_ARG, TAG, "index is invalid");
