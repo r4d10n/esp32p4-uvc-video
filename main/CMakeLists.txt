@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "camera_pipeline.c"
+        "encoder_manager.c"
+        "uvc_streaming.c"
+        "uvc_controls.c"
+    INCLUDE_DIRS
+        "."
+    PRIV_REQUIRES
+        esp_timer
+)

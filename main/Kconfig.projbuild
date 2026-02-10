@@ -1,0 +1,42 @@
+menu "UVC Webcam Configuration"
+
+    menu "MJPEG Settings"
+        config UVC_JPEG_QUALITY
+            int "JPEG compression quality"
+            default 80
+            range 1 100
+            help
+                JPEG compression quality (1=worst, 100=best).
+    endmenu
+
+    menu "H.264 Settings"
+        config UVC_H264_BITRATE
+            int "H.264 bitrate (bps)"
+            default 1000000
+            range 25000 2500000
+            help
+                H.264 encoder target bitrate in bits per second.
+
+        config UVC_H264_I_PERIOD
+            int "H.264 I-frame period"
+            default 30
+            range 1 120
+            help
+                Number of frames between I-frames.
+
+        config UVC_H264_MIN_QP
+            int "H.264 minimum QP"
+            default 25
+            range 0 51
+            help
+                H.264 minimum quantization parameter (lower = better quality).
+
+        config UVC_H264_MAX_QP
+            int "H.264 maximum QP"
+            default 50
+            range 0 51
+            help
+                H.264 maximum quantization parameter (higher = more compression).
+    endmenu
+
+endmenu
