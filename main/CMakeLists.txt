@@ -9,6 +9,8 @@ idf_component_register(
         "."
     PRIV_REQUIRES
         esp_timer
+        esp_hw_support
+        esp_cam_sensor
         esp_video
         espressif__tinyusb
         usb_device_uvc

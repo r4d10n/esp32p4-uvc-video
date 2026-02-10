@@ -10,6 +10,7 @@
 #ifndef _TUSB_CONFIG_H_
 #define _TUSB_CONFIG_H_
 
+#include "sdkconfig.h"
 #include "uvc_frame_config.h"
 
 #ifdef __cplusplus
@@ -18,9 +19,9 @@ extern "C" {
 
 /* ---- Board Specific ---- */
 #ifdef CONFIG_TINYUSB_RHPORT_HS
-#   define CFG_TUSB_RHPORT1_MODE    OPT_MODE_DEVICE | OPT_MODE_HIGH_SPEED
+#   define CFG_TUSB_RHPORT1_MODE    (OPT_MODE_DEVICE | OPT_MODE_HIGH_SPEED)
 #else
-#   define CFG_TUSB_RHPORT0_MODE    OPT_MODE_DEVICE | OPT_MODE_FULL_SPEED
+#   define CFG_TUSB_RHPORT0_MODE    (OPT_MODE_DEVICE | OPT_MODE_FULL_SPEED)
 #endif
 
 /* ---- Common ---- */
@@ -66,8 +67,13 @@ extern "C" {
 /* Bulk transfer for HS */
 #define CFG_TUD_VIDEO_STREAMING_BULK  1
 
+/*
+ * Internal buffer for video payload assembly. For bulk mode, this also caps
+ * dwMaxPayloadTransferSize in PROBE responses. Must be >= wMaxPacketSize.
+ * The actual endpoint descriptor uses 512 (hardcoded in usb_descriptors.h).
+ */
 #ifdef CONFIG_TINYUSB_RHPORT_HS
-#define CFG_TUD_VIDEO_STREAMING_EP_BUFSIZE  512
+#define CFG_TUD_VIDEO_STREAMING_EP_BUFSIZE  (16 * 1024)
 #else
 #define CFG_TUD_VIDEO_STREAMING_EP_BUFSIZE  64
 #endif

@@ -34,22 +34,22 @@ menu "USB Device UVC"
     menu "UVC Task Config"
         config UVC_TINYUSB_TASK_PRIORITY
             int "TinyUSB task priority"
-            default 5
-            range 1 15
+            default 24
+            range 1 25
 
         config UVC_TINYUSB_TASK_CORE
-            int "TinyUSB task core"
-            default -1
+            int "TinyUSB task core (-1=no affinity, 0=CPU0, 1=CPU1)"
+            default 1
             range -1 1
 
         config UVC_CAM1_TASK_PRIORITY
             int "Video task priority"
-            default 4
-            range 1 15
+            default 23
+            range 1 25
 
         config UVC_CAM1_TASK_CORE
-            int "Video task core"
-            default -1
+            int "Video task core (-1=no affinity, 0=CPU0, 1=CPU1)"
+            default 0
             range -1 1
     endmenu
 

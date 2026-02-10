@@ -10,13 +10,13 @@
  * Descriptor hierarchy:
  *   VideoControl Interface
  *     +-- Camera Terminal (IT)
- *     +-- Processing Unit (PU) - brightness/contrast/saturation/sharpness/gain
+ *     +-- Processing Unit (PU) - no controls (passthrough)
  *     +-- Output Terminal (OT)
  *   VideoStreaming Interface (Bulk)
  *     +-- VS Input Header (bNumFormats=3)
- *     +-- Format 1: YUY2 (2 frames)
- *     +-- Format 2: MJPEG (5 frames)
- *     +-- Format 3: H.264 (4 frames)
+ *     +-- Format 1: YUY2 (1 frame: 800x800)
+ *     +-- Format 2: MJPEG (1 frame: 800x800)
+ *     +-- Format 3: H.264 (1 frame: 800x800)
  *     +-- Color Matching
  *     +-- Bulk Endpoint
  */
@@ -60,11 +60,13 @@ enum {
     0x00                    /* bmVideoStandards */
 
 /*
- * PU bmControls: Brightness(D0), Contrast(D1), Saturation(D3), Sharpness(D4), Gain(B1:D1)
+ * PU bmControls: No controls advertised (TinyUSB doesn't implement PU
+ * control request handlers, so declaring controls causes 5s timeouts
+ * per control during Linux UVC driver enumeration).
  */
-#define PU_CTRL_BYTE0  (0x01 | 0x02 | 0x08 | 0x10)
-#define PU_CTRL_BYTE1  (0x02)
-#define PU_CTRL_BYTE2  (0x00)
+#define PU_CTRL_BYTE0  0x00
+#define PU_CTRL_BYTE1  0x00
+#define PU_CTRL_BYTE2  0x00
 
 /* ---------- Custom VS Input Header for 3 formats ------------------------ */
 /*
@@ -187,13 +189,8 @@ enum {
         1, YUY2_FRAME_COUNT, 1, 0, 0, 0, 0 \
     ), \
     TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
-        1, 0, 640, 480, \
-        640*480*2, 640*480*2*30, 640*480*2, \
-        FI(30), FI(30), FI(30)*30, FI(30) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
-        2, 0, 800, 640, \
-        800*640*2, 800*640*2*15, 800*640*2, \
+        1, 0, 800, 800, \
+        800*800*2, 800*800*2*15, 800*800*2, \
         FI(15), FI(15), FI(15)*15, FI(15) \
     ), \
     \
@@ -202,29 +199,9 @@ enum {
         2, MJPEG_FRAME_COUNT, 0, 1, 0, 0, 0, 0 \
     ), \
     TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        1, 0, 640, 480, \
-        640*480*16, 640*480*16*30, 640*480*16/8, \
-        FI(30), FI(30), FI(30), FI(30) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        2, 0, 800, 640, \
-        800*640*16, 800*640*16*50, 800*640*16/8, \
-        FI(50), FI(50), FI(50), FI(50) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        3, 0, 800, 800, \
+        1, 0, 800, 800, \
         800*800*16, 800*800*16*50, 800*800*16/8, \
         FI(50), FI(50), FI(50), FI(50) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        4, 0, 1280, 960, \
-        1280*960*16, 1280*960*16*45, 1280*960*16/8, \
-        FI(45), FI(45), FI(45), FI(45) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        5, 0, 1920, 1080, \
-        1920*1080*16, 1920*1080*16*30, 1920*1080*16/8, \
-        FI(30), FI(30), FI(30), FI(30) \
     ), \
     \
     /* ---- Format 3: H.264 (Frame-Based) ---- */ \
@@ -233,24 +210,9 @@ enum {
         TUD_VIDEO_GUID_H264, 16, 1, 0, 0, 0, 0, 1 \
     ), \
     TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        1, 0, 640, 480, \
-        640*480*16, 640*480*16*30, \
-        FI(30), 0, FI(30), FI(30), FI(30) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        2, 0, 800, 640, \
-        800*640*16, 800*640*16*50, \
+        1, 0, 800, 800, \
+        800*800*16, 800*800*16*50, \
         FI(50), 0, FI(50), FI(50), FI(50) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        3, 0, 1280, 960, \
-        1280*960*16, 1280*960*16*45, \
-        FI(45), 0, FI(45), FI(45), FI(45) \
-    ), \
-    TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        4, 0, 1920, 1080, \
-        1920*1080*16, 1920*1080*16*30, \
-        FI(30), 0, FI(30), FI(30), FI(30) \
     ), \
     \
     /* Color Matching */ \
@@ -260,7 +222,7 @@ enum {
         VIDEO_COLOR_COEF_SMPTE170M \
     ), \
     \
-    /* Bulk Endpoint */ \
-    TUD_VIDEO_DESC_EP_BULK(_epin, _epsize, 1)
+    /* Bulk Endpoint (wMaxPacketSize=512 for HS, regardless of EP_BUFSIZE) */ \
+    TUD_VIDEO_DESC_EP_BULK(_epin, 512, 1)
 
 #endif /* _USB_DESCRIPTORS_H_ */

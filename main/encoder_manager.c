@@ -10,7 +10,9 @@
 #include <sys/mman.h>
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_cache.h"
 #include "linux/videodev2.h"
+#include "linux/v4l2-controls.h"
 #include "esp_video_device.h"
 #include "encoder_manager.h"
 
@@ -77,6 +79,26 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
     };
     ESP_RETURN_ON_FALSE(ioctl(ctx->m2m_fd, VIDIOC_REQBUFS, &req) == 0,
                         ESP_FAIL, TAG, "REQBUFS output failed");
+
+    /* Configure H.264 encoder parameters before starting */
+    if (ctx->type == ENCODER_TYPE_H264) {
+        struct v4l2_ext_control ctrls_arr[] = {
+            { .id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, .value = 1 },    /* every frame is IDR */
+            { .id = V4L2_CID_MPEG_VIDEO_BITRATE,       .value = 2000000 },
+            { .id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,   .value = 20 },
+            { .id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,   .value = 40 },
+        };
+        struct v4l2_ext_controls ctrls = {
+            .ctrl_class = V4L2_CID_CODEC_CLASS,
+            .count      = sizeof(ctrls_arr) / sizeof(ctrls_arr[0]),
+            .controls   = ctrls_arr,
+        };
+        if (ioctl(ctx->m2m_fd, VIDIOC_S_EXT_CTRLS, &ctrls) != 0) {
+            ESP_LOGW(TAG, "H.264 ext ctrls set failed (non-fatal)");
+        } else {
+            ESP_LOGI(TAG, "H.264: GOP=1 (all IDR), bitrate=2Mbps, QP=20-40");
+        }
+    }
 
     /* Configure M2M capture (encoded output from encoder) */
     memset(&fmt, 0, sizeof(fmt));
@@ -167,6 +189,16 @@ esp_err_t encoder_encode(encoder_ctx_t *ctx, uint8_t *raw_buf, uint32_t raw_len,
     /* Reclaim the output buffer */
     ESP_RETURN_ON_FALSE(ioctl(ctx->m2m_fd, VIDIOC_DQBUF, &out_buf) == 0,
                         ESP_FAIL, TAG, "DQBUF output failed");
+
+    /*
+     * Invalidate CPU data cache for the capture buffer region.
+     * The H.264/JPEG encoder writes via DMA, bypassing the CPU cache.
+     * Without this, CPU reads stale cache lines → corrupted NAL units.
+     */
+    /* Round up to cache line size (64 bytes) for alignment requirement */
+    uint32_t aligned_len = (cap_buf.bytesused + 63) & ~63;
+    esp_cache_msync(ctx->capture_buffer, aligned_len,
+                    ESP_CACHE_MSYNC_FLAG_DIR_M2C);
 
     *enc_buf = ctx->capture_buffer;
     *enc_len = cap_buf.bytesused;

@@ -8,15 +8,16 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_timer.h"
+#include "esp_heap_caps.h"
 #include "linux/videodev2.h"
 #include <sys/ioctl.h>
 #include "usb_device_uvc.h"
 #include "uvc_streaming.h"
 
-/* Frame counts from uvc_descriptors.h (avoid pulling in tusb.h here) */
-#define YUY2_FRAME_COUNT   2
-#define MJPEG_FRAME_COUNT  5
-#define H264_FRAME_COUNT   4
+/* Frame counts from uvc_frame_config.h (avoid pulling in tusb.h here) */
+#define YUY2_FRAME_COUNT   1
+#define MJPEG_FRAME_COUNT  1
+#define H264_FRAME_COUNT   1
 
 static const char *TAG = "uvc_stream";
 
@@ -233,10 +234,12 @@ esp_err_t uvc_stream_init(uvc_stream_ctx_t *ctx)
     /*
      * Allocate UVC transfer buffer.
      * Size needs to be large enough for the largest uncompressed frame
-     * (YUY2 800x640 = 1,024,000 bytes) or the largest expected compressed frame.
+     * (YUY2 800x800 = 1,280,000 bytes) or the largest expected compressed frame.
      */
     uvc_config.uvc_buffer_size = 1920 * 1080 * 2;
-    uvc_config.uvc_buffer = malloc(uvc_config.uvc_buffer_size);
+    /* 64-byte alignment for L1 cache-line coherency with DWC2 DMA */
+    uvc_config.uvc_buffer = heap_caps_aligned_alloc(64, uvc_config.uvc_buffer_size,
+                                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     ESP_RETURN_ON_FALSE(uvc_config.uvc_buffer, ESP_ERR_NO_MEM, TAG,
                         "Failed to allocate UVC buffer");
 

@@ -50,9 +50,11 @@ static void usb_phy_init(void)
     usb_phy_config_t phy_conf = {
         .controller = USB_PHY_CTRL_OTG,
         .otg_mode = USB_OTG_MODE_DEVICE,
-        .target = USB_PHY_TARGET_INT,
 #if CONFIG_TINYUSB_RHPORT_HS
+        .target = USB_PHY_TARGET_EXT,
         .otg_speed = USB_PHY_SPEED_HIGH,
+#else
+        .target = USB_PHY_TARGET_INT,
 #endif
     };
     usb_new_phy(&phy_conf, &s_uvc_device.phy_hdl);
