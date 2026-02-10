@@ -10,4 +10,5 @@ dependencies:
     version: "*"
     override_path: "../../esp-video-components/esp_ipa"
   usb_device_uvc:
-    version: "1.2.*"
+    version: "*"
+    override_path: "../components/usb_device_uvc"

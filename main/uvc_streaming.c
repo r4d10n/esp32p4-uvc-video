@@ -9,9 +9,14 @@
 #include "esp_check.h"
 #include "esp_timer.h"
 #include "linux/videodev2.h"
+#include <sys/ioctl.h>
 #include "usb_device_uvc.h"
-#include "uvc_descriptors.h"
 #include "uvc_streaming.h"
+
+/* Frame counts from uvc_descriptors.h (avoid pulling in tusb.h here) */
+#define YUY2_FRAME_COUNT   2
+#define MJPEG_FRAME_COUNT  5
+#define H264_FRAME_COUNT   4
 
 static const char *TAG = "uvc_stream";
 
@@ -168,7 +173,7 @@ static uvc_fb_t *on_fb_get(void *cb_ctx)
     case STREAM_FORMAT_H264:
         ctx->fb.format = UVC_FORMAT_H264;
         break;
-    default:
+    case STREAM_FORMAT_YUY2:
         ctx->fb.format = UVC_FORMAT_UNCOMPR;
         break;
     }

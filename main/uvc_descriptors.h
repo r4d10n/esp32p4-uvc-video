@@ -33,7 +33,6 @@
 #pragma once
 
 #include "tusb.h"
-#include "usb_device_uvc.h"
 
 /* ---------- entity IDs --------------------------------------------------- */
 #define UVC_ENTITY_CAP_INPUT_TERMINAL   0x01
@@ -83,6 +82,46 @@
 #define PU_CTRL_BYTE1  (0x02)                         /* gain */
 #define PU_CTRL_BYTE2  (0x00)
 
+/* ---------- Custom VS Input Header for multi-format ---------------------- */
+/*
+ * TinyUSB's TUD_VIDEO_DESC_CS_VS_INPUT macro only works for bNumFormats=1.
+ * For multi-format, the bmaControls section needs bNumFormats * bControlSize
+ * bytes, but the macro only emits bControlSize bytes. We write raw bytes.
+ *
+ * VS Input Header (UVC 1.5 Table 3-13):
+ *   bLength              = 13 + p*n (p=bNumFormats, n=bControlSize)
+ *   bDescriptorType      = 0x24 (CS_INTERFACE)
+ *   bDescriptorSubtype   = 0x01 (VS_INPUT_HEADER)
+ *   bNumFormats           = p
+ *   wTotalLength          = bLength + inner descriptors total
+ *   bEndpointAddress      = endpoint
+ *   bmInfo                = 0
+ *   bTerminalLink         = output terminal ID
+ *   bStillCaptureMethod   = 0
+ *   bTriggerSupport       = 0
+ *   bTriggerUsage         = 0
+ *   bControlSize          = n
+ *   bmaControls(1..p)     = n bytes each
+ */
+#define VS_INPUT_HDR_LEN  (13 + 3 * 1)  /* 3 formats, bControlSize=1 => 16 */
+
+#define TUD_VIDEO_DESC_CS_VS_INPUT_3FMT(_totallen, _epin, _termlnk) \
+    VS_INPUT_HDR_LEN, \
+    TUSB_DESC_CS_INTERFACE, \
+    0x01, /* VIDEO_CS_ITF_VS_INPUT_HEADER */ \
+    0x03, /* bNumFormats = 3 */ \
+    U16_TO_U8S_LE((_totallen) + VS_INPUT_HDR_LEN), /* wTotalLength */ \
+    _epin, \
+    0x00, /* bmInfo */ \
+    _termlnk, \
+    0x00, /* bStillCaptureMethod */ \
+    0x00, /* bTriggerSupport */ \
+    0x00, /* bTriggerUsage */ \
+    0x01, /* bControlSize = 1 byte per format */ \
+    0x00, /* bmaControls(1) - YUY2 */ \
+    0x00, /* bmaControls(2) - MJPEG */ \
+    0x00  /* bmaControls(3) - H.264 */
+
 /* ---------- total lengths for descriptor computation --------------------- */
 
 /* Video Control total (inside CS_VC header's wTotalLength) */
@@ -116,7 +155,7 @@
     VC_TOTAL_INNER_LEN + \
     /* VS interface alt 0 (no endpoint) */ \
     TUD_VIDEO_DESC_STD_VS_LEN + \
-    (TUD_VIDEO_DESC_CS_VS_IN_LEN + 3) + /* +3 for bmaControls x bNumFormats */ \
+    VS_INPUT_HDR_LEN + \
     VS_TOTAL_INNER_LEN + \
     /* VS interface alt 1 (with endpoint) */ \
     TUD_VIDEO_DESC_STD_VS_LEN + \
@@ -169,15 +208,11 @@
     /* ==== Video Streaming Interface (alt 0, no EP) ==== */ \
     TUD_VIDEO_DESC_STD_VS(_itf + 1, 0, 0, _stridx), \
     \
-    /* VS Input Header: 3 formats */ \
-    TUD_VIDEO_DESC_CS_VS_INPUT( \
-        3, /* bNumFormats */ \
+    /* VS Input Header: 3 formats (custom macro for multi-format) */ \
+    TUD_VIDEO_DESC_CS_VS_INPUT_3FMT( \
         VS_TOTAL_INNER_LEN, \
         _epin, \
-        0, /* bmInfo */ \
-        UVC_ENTITY_CAP_OUTPUT_TERMINAL, \
-        0, 0, 0, /* still capture, trigger */ \
-        0, 0, 0  /* bmaControls for each format */ \
+        UVC_ENTITY_CAP_OUTPUT_TERMINAL \
     ), \
     \
     /* ---- Format 1: YUY2 (Uncompressed) ---- */ \
