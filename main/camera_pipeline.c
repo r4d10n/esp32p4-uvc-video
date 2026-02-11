@@ -271,25 +271,30 @@ static void camera_apply_isp_profile(int cap_fd, int profile_idx)
         ESP_LOGW(TAG, "  WB set failed");
     }
 
-    /* Gamma Correction: sRGB-like curve (gamma ~2.2) */
+    /* Gamma Correction: sRGB-like curve (gamma ~2.2)
+     * x values must match esp_isp_gamma_fill_curve_points() pattern:
+     * - pt[0].x must be > 0 (x_prev starts at 0, validation: x_i > x_prev)
+     * - each x delta must be a power of 2 (delta & (delta-1) == 0)
+     * - pt[15].x must be exactly 255 (validated, then treated as 256 internally)
+     * Valid sequence: 16, 32, 48, ..., 240, 255 (deltas: all 16, last treated as 16) */
     esp_video_isp_gamma_t gamma = {
         .enable = true,
         .points = {
-            { .x =   0, .y =   0 },
-            { .x =  16, .y =  71 },
-            { .x =  32, .y =  93 },
-            { .x =  48, .y = 108 },
-            { .x =  64, .y = 121 },
-            { .x =  80, .y = 132 },
-            { .x =  96, .y = 141 },
-            { .x = 112, .y = 150 },
-            { .x = 128, .y = 158 },
-            { .x = 144, .y = 165 },
-            { .x = 160, .y = 172 },
-            { .x = 176, .y = 178 },
-            { .x = 192, .y = 184 },
-            { .x = 208, .y = 190 },
-            { .x = 224, .y = 196 },
+            { .x =  16, .y =  72 },
+            { .x =  32, .y =  99 },
+            { .x =  48, .y = 119 },
+            { .x =  64, .y = 136 },
+            { .x =  80, .y = 151 },
+            { .x =  96, .y = 164 },
+            { .x = 112, .y = 175 },
+            { .x = 128, .y = 186 },
+            { .x = 144, .y = 197 },
+            { .x = 160, .y = 206 },
+            { .x = 176, .y = 215 },
+            { .x = 192, .y = 224 },
+            { .x = 208, .y = 232 },
+            { .x = 224, .y = 240 },
+            { .x = 240, .y = 248 },
             { .x = 255, .y = 255 },
         },
     };
