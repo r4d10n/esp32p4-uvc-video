@@ -159,40 +159,70 @@ typedef struct {
 } isp_color_profile_t;
 
 static const isp_color_profile_t s_profiles[] = {
-    [0] = {  /* ~3000K: Incandescent / Tungsten */
-        .name = "Indoor-Warm",
+    [0] = {  /* 2873K: Incandescent / Tungsten */
+        .name = "Tungsten",
         .ccm = {
             {  1.88195f, -0.26249f, -0.61946f },
-            { -0.63842f,  2.11535f, -0.47693f },
-            { -0.13531f, -0.99739f,  2.13271f },
+            { -0.40081f,  1.77632f, -0.37551f },
+            {  0.00257f, -0.75415f,  1.75158f },
         },
-        .wb_red_gain  = 1.80f,
-        .wb_blue_gain = 1.05f,
+        .wb_red_gain  = 1.50f,
+        .wb_blue_gain = 1.76f,
     },
-    [1] = {  /* ~4700K: Fluorescent / Office */
+    [1] = {  /* 3725K: Warm Indoor */
+        .name = "Indoor-Warm",
+        .ccm = {
+            {  1.94343f, -0.50885f, -0.43458f },
+            { -0.38988f,  1.85523f, -0.46535f },
+            { -0.00887f, -0.74623f,  1.75510f },
+        },
+        .wb_red_gain  = 1.46f,
+        .wb_blue_gain = 1.49f,
+    },
+    [2] = {  /* 5095K: Fluorescent / Office */
         .name = "Fluorescent",
         .ccm = {
-            {  2.00971f, -0.51461f, -0.49511f },
-            { -0.52109f,  2.01003f, -0.48894f },
-            { -0.09527f, -0.67318f,  1.76845f },
+            {  2.00666f, -0.63316f, -0.37350f },
+            { -0.40071f,  1.94742f, -0.54671f },
+            { -0.03109f, -0.83048f,  1.86157f },
         },
-        .wb_red_gain  = 1.45f,
-        .wb_blue_gain = 1.30f,
+        .wb_red_gain  = 1.37f,
+        .wb_blue_gain = 1.33f,
     },
-    [2] = {  /* ~5900K: Daylight / Outdoor */
+    [3] = {  /* 6015K: Daylight / Outdoor */
         .name = "Daylight",
         .ccm = {
-            {  2.13616f, -0.65283f, -0.48333f },
-            { -0.48364f,  1.93115f, -0.44751f },
-            { -0.13465f, -0.54831f,  1.68295f },
+            {  1.99726f, -0.63965f, -0.35761f },
+            { -0.40616f,  1.94421f, -0.53805f },
+            { -0.01886f, -0.73970f,  1.75855f },
         },
-        .wb_red_gain  = 1.20f,
-        .wb_blue_gain = 1.55f,
+        .wb_red_gain  = 1.30f,
+        .wb_blue_gain = 1.24f,
+    },
+    [4] = {  /* 6865K: Cloudy / Overcast */
+        .name = "Cloudy",
+        .ccm = {
+            {  2.05107f, -0.68023f, -0.37084f },
+            { -0.42693f,  1.93461f, -0.50768f },
+            { -0.01654f, -0.69652f,  1.71306f },
+        },
+        .wb_red_gain  = 1.26f,
+        .wb_blue_gain = 1.21f,
+    },
+    [5] = {  /* 7600K: Cool Daylight / Shade */
+        .name = "Shade",
+        .ccm = {
+            {  2.06599f, -0.39161f, -0.67439f },
+            { -0.43251f,  1.92138f, -0.48887f },
+            { -0.01948f, -0.77319f,  1.79267f },
+        },
+        .wb_red_gain  = 1.22f,
+        .wb_blue_gain = 1.19f,
     },
 };
 
 #define ISP_NUM_PROFILES  (sizeof(s_profiles) / sizeof(s_profiles[0]))
-#define ISP_DEFAULT_PROFILE 0   /* Indoor-Warm - best for typical indoor use */
+#define ISP_DEFAULT_PROFILE 3   /* Daylight - broadest appeal across lighting conditions */
 
 static void camera_apply_isp_profile(int cap_fd, int profile_idx)
 {
@@ -241,25 +271,70 @@ static void camera_apply_isp_profile(int cap_fd, int profile_idx)
         ESP_LOGW(TAG, "  WB set failed");
     }
 
-    /* Black Level Correction (OV5647: raw black level = 1024 on 10-bit = 64 on 8-bit) */
-    esp_video_isp_blc_t blc = {
+    /* Gamma Correction: sRGB-like curve (gamma ~2.2) */
+    esp_video_isp_gamma_t gamma = {
         .enable = true,
-        .stretch_enable = true,
-        .top_left_offset = 64,
-        .top_right_offset = 64,
-        .bottom_left_offset = 64,
-        .bottom_right_offset = 64,
+        .points = {
+            { .x =   0, .y =   0 },
+            { .x =  16, .y =  71 },
+            { .x =  32, .y =  93 },
+            { .x =  48, .y = 108 },
+            { .x =  64, .y = 121 },
+            { .x =  80, .y = 132 },
+            { .x =  96, .y = 141 },
+            { .x = 112, .y = 150 },
+            { .x = 128, .y = 158 },
+            { .x = 144, .y = 165 },
+            { .x = 160, .y = 172 },
+            { .x = 176, .y = 178 },
+            { .x = 192, .y = 184 },
+            { .x = 208, .y = 190 },
+            { .x = 224, .y = 196 },
+            { .x = 255, .y = 255 },
+        },
     };
 
-    struct v4l2_ext_control blc_ctrl = {
-        .id = V4L2_CID_USER_ESP_ISP_BLC, .size = sizeof(blc), .ptr = &blc,
+    struct v4l2_ext_control gamma_ctrl = {
+        .id = V4L2_CID_USER_ESP_ISP_GAMMA, .size = sizeof(gamma), .ptr = &gamma,
     };
-    ctrls.controls = &blc_ctrl;
+    ctrls.controls = &gamma_ctrl;
     if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
-        ESP_LOGI(TAG, "  BLC applied (offset=64, stretch=on)");
+        ESP_LOGI(TAG, "  Gamma applied (sRGB ~2.2)");
     } else {
-        ESP_LOGW(TAG, "  BLC set failed");
+        ESP_LOGW(TAG, "  Gamma set failed");
     }
+
+    /* Sharpening: moderate edge enhancement */
+    esp_video_isp_sharpen_t sharpen = {
+        .enable = true,
+        .h_thresh = 40,
+        .l_thresh = 10,
+        .h_coeff = 1.5f,
+        .m_coeff = 0.5f,
+        .matrix = {
+            { 1, 2, 1 },
+            { 2, 4, 2 },
+            { 1, 2, 1 },
+        },
+    };
+
+    struct v4l2_ext_control sharpen_ctrl = {
+        .id = V4L2_CID_USER_ESP_ISP_SHARPEN, .size = sizeof(sharpen), .ptr = &sharpen,
+    };
+    ctrls.controls = &sharpen_ctrl;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
+        ESP_LOGI(TAG, "  Sharpen applied (moderate)");
+    } else {
+        ESP_LOGW(TAG, "  Sharpen set failed");
+    }
+
+    /*
+     * BLC (Black Level Correction): OV5647 calibrated at 1024 (10-bit).
+     * Not available in ESP-IDF v5.5.1 — the esp_isp_blc_*() functions
+     * don't exist yet.  The esp-video-components BLC wrapper compiles
+     * but returns ESP_ERR_NOT_SUPPORTED (0x106) at runtime.
+     * TODO: Enable when IDF adds BLC driver support.
+     */
 
     close(fd);
 }
