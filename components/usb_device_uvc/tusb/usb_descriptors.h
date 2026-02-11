@@ -12,6 +12,7 @@
  *   VideoControl Interface
  *     +-- Camera Terminal (IT)
  *     +-- Processing Unit (PU)
+ *     +-- Extension Unit (XU) — ISP Color Profile
  *     +-- Output Terminal (OT)
  *   VideoStreaming Interface (Bulk)
  *     +-- VS Input Header (bNumFormats=3)

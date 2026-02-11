@@ -93,6 +93,16 @@ esp_err_t uvc_device_init(void);
  */
 esp_err_t uvc_device_deinit(void);
 
+/**
+ * @brief Set the default value for an XU control (cur and def fields).
+ *
+ * Call before USB enumeration to sync XU defaults with application config.
+ *
+ * @param cs   Control selector (e.g. 0x01 for ISP Profile)
+ * @param value Default value (must be within [min, max])
+ */
+void uvc_xu_set_default(uint8_t cs, uint8_t value);
+
 #ifdef __cplusplus
 }
 #endif

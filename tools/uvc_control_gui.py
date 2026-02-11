@@ -374,7 +374,7 @@ def main():
     # Check for v4l2-ctl
     try:
         subprocess.run(['v4l2-ctl', '--version'], capture_output=True, timeout=3)
-    except FileNotFoundError:
+    except (FileNotFoundError, subprocess.TimeoutExpired):
         print('Error: v4l2-ctl not found. Install v4l-utils:')
         print('  sudo pacman -S v4l-utils    # Arch/Manjaro')
         print('  sudo apt install v4l-utils   # Debian/Ubuntu')

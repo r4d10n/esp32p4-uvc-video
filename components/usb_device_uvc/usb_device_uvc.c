@@ -308,6 +308,19 @@ static xu_control_t s_xu_controls[] = {
 
 static uint8_t s_xu_set_buf;  /* receive buffer for XU SET_CUR data stage */
 
+void uvc_xu_set_default(uint8_t cs, uint8_t value)
+{
+    for (int i = 0; i < XU_CONTROL_COUNT; i++) {
+        if (s_xu_controls[i].cs == cs) {
+            if (value >= s_xu_controls[i].min && value <= s_xu_controls[i].max) {
+                s_xu_controls[i].cur = value;
+                s_xu_controls[i].def = value;
+            }
+            return;
+        }
+    }
+}
+
 /* Weak callback: application overrides to handle XU control changes */
 TU_ATTR_WEAK void uvc_xu_control_set_cb(uint8_t cs, uint8_t value)
 {

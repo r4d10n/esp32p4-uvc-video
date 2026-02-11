@@ -12,6 +12,7 @@
 #include "esp_check.h"
 #include "linux/videodev2.h"
 #include "esp_video_device.h"
+#include "usb_device_uvc.h"
 #include "uvc_controls.h"
 #include "camera_pipeline.h"
 
@@ -55,7 +56,10 @@ esp_err_t uvc_ctrl_init(void)
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "PU control bridge initialized (ISP fd=%d)", s_isp_fd);
+    /* Sync XU ISP profile default with Kconfig setting */
+    uvc_xu_set_default(0x01, CONFIG_ISP_DEFAULT_PROFILE_INDEX);
+
+    ESP_LOGI(TAG, "PU/XU control bridge initialized (ISP fd=%d)", s_isp_fd);
     return ESP_OK;
 }
 

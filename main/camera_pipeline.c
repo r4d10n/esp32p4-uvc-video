@@ -227,7 +227,7 @@ _Static_assert(sizeof(s_profiles) / sizeof(s_profiles[0]) == ISP_NUM_PROFILES,
 
 void camera_apply_isp_profile(int profile_idx)
 {
-    if (profile_idx >= ISP_NUM_PROFILES) {
+    if (profile_idx < 0 || profile_idx >= ISP_NUM_PROFILES) {
         profile_idx = ISP_DEFAULT_PROFILE;
     }
     const isp_color_profile_t *p = &s_profiles[profile_idx];
