@@ -3,12 +3,12 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Multi-format frame configuration for UVC webcam.
+ * Multi-format, multi-resolution frame configuration for UVC webcam.
  * Defines per-format frame tables used by both descriptors and runtime.
  *
- * Resolution must match the OV5647 sensor's configured mode.
- * The CSI V4L2 driver does not support runtime resolution changes;
- * S_FMT only allows changing pixel format, not width/height.
+ * The OV5647 sensor captures at 800x800 RAW8 50fps (compile-time Kconfig).
+ * The CSI V4L2 driver does NOT support runtime resolution changes.
+ * Smaller resolutions are achieved via software center-crop from 800x800.
  *
  * Current sensor config: 800x800 RAW8 50fps
  * (CONFIG_CAMERA_OV5647_MIPI_RAW8_800X800_50FPS)
@@ -19,30 +19,44 @@
 #include <stdint.h>
 #include <stddef.h>
 
+/* Native camera capture resolution (fixed by sensor Kconfig) */
+#define CAMERA_CAPTURE_WIDTH   800
+#define CAMERA_CAPTURE_HEIGHT  800
+
 typedef struct {
     uint16_t width;
     uint16_t height;
     uint8_t  max_fps;
 } uvc_frame_info_t;
 
-/* Format 1: YUY2 (Uncompressed) - bFormatIndex=1
- * Limited to lower fps due to raw frame size vs USB HS bulk bandwidth.
- * 800x800 YUY2 = 1,280,000 bytes/frame. At 15fps = ~19.2MB/s. */
-#define YUY2_FRAME_COUNT   1
-static const uvc_frame_info_t uvc_yuy2_frames[YUY2_FRAME_COUNT] = {
+/* Format 1: UYVY (Uncompressed) - bFormatIndex=1
+ * UYVY = 2 bytes/pixel. Bandwidth-limited over USB HS bulk:
+ *   800x800 @ 15fps = 19.2 MB/s
+ *   640x480 @ 30fps = 18.4 MB/s
+ *   320x240 @ 50fps =  7.7 MB/s  */
+#define UYVY_FRAME_COUNT   3
+static const uvc_frame_info_t uvc_uyvy_frames[UYVY_FRAME_COUNT] = {
     { 800,  800,  15 },
+    { 640,  480,  30 },
+    { 320,  240,  50 },
 };
 
-/* Format 2: MJPEG - bFormatIndex=2 */
-#define MJPEG_FRAME_COUNT  1
+/* Format 2: MJPEG - bFormatIndex=2
+ * Compressed — bandwidth is not a concern at any resolution. */
+#define MJPEG_FRAME_COUNT  3
 static const uvc_frame_info_t uvc_mjpeg_frames[MJPEG_FRAME_COUNT] = {
     { 800,  800,  50 },
+    { 640,  480,  50 },
+    { 320,  240,  50 },
 };
 
-/* Format 3: H.264 (Frame-Based) - bFormatIndex=3 */
-#define H264_FRAME_COUNT   1
+/* Format 3: H.264 (Frame-Based) - bFormatIndex=3
+ * Compressed — bandwidth is not a concern at any resolution. */
+#define H264_FRAME_COUNT   3
 static const uvc_frame_info_t uvc_h264_frames[H264_FRAME_COUNT] = {
     { 800,  800,  50 },
+    { 640,  480,  50 },
+    { 320,  240,  50 },
 };
 
 #define UVC_NUM_FORMATS  3
@@ -57,8 +71,8 @@ static inline const uvc_frame_info_t *uvc_get_frame_info(uint8_t format_index, u
     if (frame_index == 0) return NULL;
     switch (format_index) {
     case 1:
-        if (frame_index > YUY2_FRAME_COUNT) return NULL;
-        return &uvc_yuy2_frames[frame_index - 1];
+        if (frame_index > UYVY_FRAME_COUNT) return NULL;
+        return &uvc_uyvy_frames[frame_index - 1];
     case 2:
         if (frame_index > MJPEG_FRAME_COUNT) return NULL;
         return &uvc_mjpeg_frames[frame_index - 1];

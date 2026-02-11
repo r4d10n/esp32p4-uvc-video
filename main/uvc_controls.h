@@ -14,6 +14,18 @@ extern "C" {
 #endif
 
 /**
+ * @brief Initialize PU control bridge (opens cached ISP fd)
+ *
+ * Must be called once at startup before any PU control callbacks fire.
+ */
+esp_err_t uvc_ctrl_init(void);
+
+/**
+ * @brief Deinitialize PU control bridge (closes cached ISP fd)
+ */
+void uvc_ctrl_deinit(void);
+
+/**
  * @brief Set H.264 encoder parameters via V4L2 controls
  *
  * @param m2m_fd    H.264 M2M device fd

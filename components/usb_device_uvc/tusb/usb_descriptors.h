@@ -5,18 +5,19 @@
  *
  * Multi-format UVC 1.5 descriptor for ESP32-P4 webcam (Bulk mode).
  *
- * Advertises 3 formats simultaneously: YUY2, MJPEG, H.264
+ * Advertises 3 formats simultaneously: UYVY, MJPEG, H.264
+ * Each format supports 3 resolutions: 800x800, 640x480, 320x240
  *
  * Descriptor hierarchy:
  *   VideoControl Interface
  *     +-- Camera Terminal (IT)
- *     +-- Processing Unit (PU) - no controls (passthrough)
+ *     +-- Processing Unit (PU)
  *     +-- Output Terminal (OT)
  *   VideoStreaming Interface (Bulk)
  *     +-- VS Input Header (bNumFormats=3)
- *     +-- Format 1: YUY2 (1 frame: 800x800)
- *     +-- Format 2: MJPEG (1 frame: 800x800)
- *     +-- Format 3: H.264 (1 frame: 800x800)
+ *     +-- Format 1: UYVY (3 frames: 800x800, 640x480, 320x240)
+ *     +-- Format 2: MJPEG (3 frames: 800x800, 640x480, 320x240)
+ *     +-- Format 3: H.264 (3 frames: 800x800, 640x480, 320x240)
  *     +-- Color Matching
  *     +-- Bulk Endpoint
  */
@@ -95,7 +96,7 @@ enum {
     0x00, /* bTriggerSupport */ \
     0x00, /* bTriggerUsage */ \
     0x01, /* bControlSize = 1 byte per format */ \
-    0x00, /* bmaControls(1) - YUY2 */ \
+    0x00, /* bmaControls(1) - UYVY */ \
     0x00, /* bmaControls(2) - MJPEG */ \
     0x00  /* bmaControls(3) - H.264 */
 
@@ -110,9 +111,9 @@ enum {
 
 /* Video Streaming inner length (formats+frames+color after VS Input Header) */
 #define VS_TOTAL_INNER_LEN ( \
-    /* Format 1: YUY2 */ \
+    /* Format 1: UYVY */ \
     TUD_VIDEO_DESC_CS_VS_FMT_UNCOMPR_LEN + \
-    (YUY2_FRAME_COUNT * TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT_LEN) + \
+    (UYVY_FRAME_COUNT * TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT_LEN) + \
     /* Format 2: MJPEG */ \
     TUD_VIDEO_DESC_CS_VS_FMT_MJPEG_LEN + \
     (MJPEG_FRAME_COUNT * TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT_LEN) + \
@@ -139,9 +140,13 @@ enum {
 
 #define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + UVC_DESC_TOTAL_LEN)
 
-/* Windows YUY2 format helper (from TinyUSB) */
-#define TUD_VIDEO_DESC_CS_VS_FMT_YUY2(_fmtidx, _numfmtdesc, _frmidx, _asrx, _asry, _interlace, _cp) \
-  TUD_VIDEO_DESC_CS_VS_FMT_UNCOMPR(_fmtidx, _numfmtdesc, TUD_VIDEO_GUID_YUY2, 16, _frmidx, _asrx, _asry, _interlace, _cp)
+/* UYVY format GUID: FourCC 'UYVY' + standard MS suffix */
+#define TUD_VIDEO_GUID_UYVY \
+    0x55,0x59,0x56,0x59,0x00,0x00,0x10,0x00,0x80,0x00,0x00,0xAA,0x00,0x38,0x9B,0x71
+
+/* UYVY format helper (like TinyUSB's YUY2 helper but with UYVY GUID) */
+#define TUD_VIDEO_DESC_CS_VS_FMT_UYVY(_fmtidx, _numfmtdesc, _frmidx, _asrx, _asry, _interlace, _cp) \
+  TUD_VIDEO_DESC_CS_VS_FMT_UNCOMPR(_fmtidx, _numfmtdesc, TUD_VIDEO_GUID_UYVY, 16, _frmidx, _asrx, _asry, _interlace, _cp)
 
 /*
  * Multi-format UVC descriptor (Bulk transfer, UVC 1.5).
@@ -188,23 +193,49 @@ enum {
         UVC_ENTITY_CAP_OUTPUT_TERMINAL \
     ), \
     \
-    /* ---- Format 1: YUY2 (Uncompressed) ---- */ \
-    TUD_VIDEO_DESC_CS_VS_FMT_YUY2( \
-        1, YUY2_FRAME_COUNT, 1, 0, 0, 0, 0 \
+    /* ---- Format 1: UYVY (Uncompressed) ---- */ \
+    TUD_VIDEO_DESC_CS_VS_FMT_UYVY( \
+        1, UYVY_FRAME_COUNT, 1, 0, 0, 0, 0 \
     ), \
+    /* Frame 1: 800x800 @15fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
         1, 0, 800, 800, \
         800*800*2, 800*800*2*15, 800*800*2, \
-        FI(15), FI(15), FI(15)*15, FI(15) \
+        FI(15), FI(15), FI(15), FI(15) \
+    ), \
+    /* Frame 2: 640x480 @30fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
+        2, 0, 640, 480, \
+        640*480*2, 640*480*2*30, 640*480*2, \
+        FI(30), FI(30), FI(30), FI(30) \
+    ), \
+    /* Frame 3: 320x240 @50fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
+        3, 0, 320, 240, \
+        320*240*2, 320*240*2*50, 320*240*2, \
+        FI(50), FI(50), FI(50), FI(50) \
     ), \
     \
     /* ---- Format 2: MJPEG ---- */ \
     TUD_VIDEO_DESC_CS_VS_FMT_MJPEG( \
         2, MJPEG_FRAME_COUNT, 0, 1, 0, 0, 0, 0 \
     ), \
+    /* Frame 1: 800x800 @50fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
         1, 0, 800, 800, \
         800*800*16, 800*800*16*50, 800*800*16/8, \
+        FI(50), FI(50), FI(50), FI(50) \
+    ), \
+    /* Frame 2: 640x480 @50fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
+        2, 0, 640, 480, \
+        640*480*16, 640*480*16*50, 640*480*16/8, \
+        FI(50), FI(50), FI(50), FI(50) \
+    ), \
+    /* Frame 3: 320x240 @50fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
+        3, 0, 320, 240, \
+        320*240*16, 320*240*16*50, 320*240*16/8, \
         FI(50), FI(50), FI(50), FI(50) \
     ), \
     \
@@ -213,9 +244,22 @@ enum {
         3, H264_FRAME_COUNT, \
         TUD_VIDEO_GUID_H264, 16, 1, 0, 0, 0, 0, 1 \
     ), \
+    /* Frame 1: 800x800 @50fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
         1, 0, 800, 800, \
         800*800*16, 800*800*16*50, \
+        FI(50), 0, FI(50), FI(50), FI(50) \
+    ), \
+    /* Frame 2: 640x480 @50fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
+        2, 0, 640, 480, \
+        640*480*16, 640*480*16*50, \
+        FI(50), 0, FI(50), FI(50), FI(50) \
+    ), \
+    /* Frame 3: 320x240 @50fps */ \
+    TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
+        3, 0, 320, 240, \
+        320*240*16, 320*240*16*50, \
         FI(50), 0, FI(50), FI(50), FI(50) \
     ), \
     \

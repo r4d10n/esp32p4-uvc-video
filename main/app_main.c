@@ -6,7 +6,7 @@
  * ESP32-P4 UVC 1.5 Webcam - OV5647 over MIPI CSI
  *
  * Supports three simultaneous output formats:
- *   - YUY2 (uncompressed YUV422)
+ *   - UYVY (uncompressed YUV422)
  *   - MJPEG (hardware JPEG encoder)
  *   - H.264 (hardware H.264 encoder, UVC 1.5 frame-based)
  *
@@ -18,6 +18,7 @@
 #include "camera_pipeline.h"
 #include "uvc_controls.h"
 #include "uvc_streaming.h"
+#include "perf_monitor.h"
 
 static const char *TAG = "app_main";
 
@@ -45,7 +46,10 @@ void app_main(void)
         return;
     }
 
-    /* Phase 3: Apply default encoder parameters from Kconfig */
+    /* Phase 3: Initialize PU control bridge (cached ISP fd) */
+    uvc_ctrl_init();
+
+    /* Phase 4: Apply default encoder parameters from Kconfig */
     uvc_ctrl_set_jpeg_quality(stream_ctx.jpeg_enc.m2m_fd,
                               CONFIG_UVC_JPEG_QUALITY);
     uvc_ctrl_set_h264_params(stream_ctx.h264_enc.m2m_fd,
@@ -53,6 +57,9 @@ void app_main(void)
                              CONFIG_UVC_H264_I_PERIOD,
                              CONFIG_UVC_H264_MIN_QP,
                              CONFIG_UVC_H264_MAX_QP);
+
+    /* Phase 5: Start performance monitor (CPU, memory, streaming stats) */
+    perf_monitor_start(&stream_ctx);
 
     ESP_LOGI(TAG, "UVC device ready - connect USB to host");
 }

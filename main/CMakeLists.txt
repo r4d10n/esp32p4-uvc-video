@@ -5,6 +5,7 @@ idf_component_register(
         "encoder_manager.c"
         "uvc_streaming.c"
         "uvc_controls.c"
+        "perf_monitor.c"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES
