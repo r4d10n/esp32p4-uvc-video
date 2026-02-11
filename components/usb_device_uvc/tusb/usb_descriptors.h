@@ -70,10 +70,13 @@ enum {
  *   Byte 2: D0=AnalogVideoStd, D1=AnalogLock, D2=ContrastAuto
  *
  * Enable: Brightness(D0), Contrast(D1), Hue(D2), Saturation(D3),
- *         White Balance Temperature(D6) — used as ISP profile selector (0-5)
+ *         Sharpness(D4), White Balance Temperature(D6) — ISP profile (0-5)
  */
-#define PU_CTRL_BYTE0  0x4F
-#define PU_CTRL_BYTE1  0x00
+#define PU_CTRL_BYTE0  0x5F
+/*
+ * Byte 1: D1=Gain — repurposed as BF denoising level (0=off, 2-20)
+ */
+#define PU_CTRL_BYTE1  0x02
 #define PU_CTRL_BYTE2  0x00
 
 /* ---------- Extension Unit: ISP Color Profile ---------------------------- */

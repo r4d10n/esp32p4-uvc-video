@@ -94,6 +94,8 @@ PU_CONTROLS = [
     ('contrast',    'Contrast',    0,    256, 128),
     ('hue',         'Hue',         0,    255, 0),
     ('saturation',  'Saturation',  0,    256, 128),
+    ('sharpness',   'Sharpness',   0,    100, 40),
+    ('gain',        'Denoise (BF)', 0,   20,  8),
 ]
 
 
@@ -104,7 +106,7 @@ class UVCControlPanel:
         self.root = root
         self.root.title('ESP32-P4 UVC Control Panel')
         self.root.resizable(True, True)
-        self.root.minsize(420, 500)
+        self.root.minsize(420, 580)
 
         self.device = tk.StringVar()
         self.profile_var = tk.IntVar(value=3)

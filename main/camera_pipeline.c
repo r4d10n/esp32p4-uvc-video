@@ -340,6 +340,47 @@ void camera_apply_isp_profile(int profile_idx)
         ESP_LOGW(TAG, "  Sharpen set failed");
     }
 
+    /* BF (Bayer Filter) Denoising: reduces sensor noise in raw Bayer domain.
+     * Level range [2, 20]; higher = more smoothing but also more detail loss.
+     * Matrix is a 3x3 Gaussian-like kernel for spatial weighting. */
+    esp_video_isp_bf_t bf = {
+        .enable = true,
+        .level = 8,
+        .matrix = {
+            { 1, 2, 1 },
+            { 2, 4, 2 },
+            { 1, 2, 1 },
+        },
+    };
+
+    struct v4l2_ext_control bf_ctrl = {
+        .id = V4L2_CID_USER_ESP_ISP_BF, .size = sizeof(bf), .ptr = &bf,
+    };
+    ctrls.controls = &bf_ctrl;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
+        ESP_LOGI(TAG, "  BF denoise applied (level=%d)", bf.level);
+    } else {
+        ESP_LOGW(TAG, "  BF denoise set failed");
+    }
+
+    /* Demosaic: converts raw Bayer pattern to full RGB.
+     * gradient_ratio controls edge sensitivity — higher values preserve
+     * edges better but may introduce artifacts at very high settings. */
+    esp_video_isp_demosaic_t demosaic = {
+        .enable = true,
+        .gradient_ratio = 1.0f,
+    };
+
+    struct v4l2_ext_control demosaic_ctrl = {
+        .id = V4L2_CID_USER_ESP_ISP_DEMOSAIC, .size = sizeof(demosaic), .ptr = &demosaic,
+    };
+    ctrls.controls = &demosaic_ctrl;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &ctrls) == 0) {
+        ESP_LOGI(TAG, "  Demosaic applied (grad_ratio=%.1f)", demosaic.gradient_ratio);
+    } else {
+        ESP_LOGW(TAG, "  Demosaic set failed");
+    }
+
     /*
      * BLC (Black Level Correction): OV5647 calibrated at 1024 (10-bit).
      * Not available in ESP-IDF v5.5.1 — the esp_isp_blc_*() functions

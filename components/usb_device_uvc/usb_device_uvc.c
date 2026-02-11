@@ -250,7 +250,9 @@ int tud_video_commit_cb(uint_fast8_t ctl_idx, uint_fast8_t stm_idx,
 #define PU_CONTRAST_CONTROL                 0x03
 #define PU_HUE_CONTROL                      0x06
 #define PU_SATURATION_CONTROL               0x07
+#define PU_SHARPNESS_CONTROL                 0x04
 #define PU_WHITE_BALANCE_TEMPERATURE_CONTROL 0x0A
+#define PU_GAIN_CONTROL                      0x10
 
 /* Must match UVC_ENTITY_PROCESSING_UNIT in usb_descriptors.h */
 #define PU_ENTITY_ID  0x02
@@ -269,7 +271,9 @@ static pu_control_t s_pu_controls[] = {
     { PU_CONTRAST_CONTROL,                 128,  0,    256, 1, 128  },
     { PU_HUE_CONTROL,                      0,    0,    255, 1, 0    },
     { PU_SATURATION_CONTROL,               128,  0,    256, 1, 128  },
+    { PU_SHARPNESS_CONTROL,                 40,  0,    100, 1, 40   },  /* ISP sharpen h_thresh */
     { PU_WHITE_BALANCE_TEMPERATURE_CONTROL, 3,   0,    5,   1, 3    },  /* ISP profile index */
+    { PU_GAIN_CONTROL,                      8,   0,    20,  1, 8    },  /* BF denoise level (0=off) */
 };
 #define PU_CONTROL_COUNT (sizeof(s_pu_controls) / sizeof(s_pu_controls[0]))
 
