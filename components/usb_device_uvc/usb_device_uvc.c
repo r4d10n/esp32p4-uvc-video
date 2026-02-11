@@ -279,6 +279,44 @@ TU_ATTR_WEAK void uvc_pu_control_set_cb(uint8_t cs, int16_t value)
     (void)cs; (void)value;
 }
 
+/*
+ * ---- Extension Unit (XU) control handling ----
+ *
+ * XU controls allow vendor-specific parameters (here: ISP color profile).
+ * Each control is 1 byte (uint8_t). Same GET/SET pattern as PU but simpler.
+ */
+
+/* XU control selectors */
+#define XU_ISP_PROFILE_SELECT  0x01
+
+/* Must match UVC_ENTITY_ISP_XU in usb_descriptors.h */
+#define XU_ENTITY_ID  0x04
+
+typedef struct {
+    uint8_t cs;
+    uint8_t cur;
+    uint8_t min;
+    uint8_t max;
+    uint8_t res;
+    uint8_t def;
+} xu_control_t;
+
+static xu_control_t s_xu_controls[] = {
+    { XU_ISP_PROFILE_SELECT, 3, 0, 5, 1, 3 },  /* default=Daylight(3), max=Shade(5) */
+};
+#define XU_CONTROL_COUNT (sizeof(s_xu_controls) / sizeof(s_xu_controls[0]))
+
+static uint8_t s_xu_set_buf;  /* receive buffer for XU SET_CUR data stage */
+
+/* Weak callback: application overrides to handle XU control changes */
+TU_ATTR_WEAK void uvc_xu_control_set_cb(uint8_t cs, uint8_t value)
+{
+    (void)cs; (void)value;
+}
+
+/*
+ * Unified entity control handler for both PU (entity 0x02) and XU (entity 0x04).
+ */
 int tud_video_entity_control_xfer_cb(uint8_t rhport, uint8_t stage,
                                       tusb_control_request_t const *request,
                                       uint_fast8_t ctl_idx)
@@ -287,60 +325,112 @@ int tud_video_entity_control_xfer_cb(uint8_t rhport, uint8_t stage,
     uint8_t entity_id = TU_U16_HIGH(request->wIndex);
     uint8_t cs = TU_U16_HIGH(request->wValue);
 
-    if (entity_id != PU_ENTITY_ID) {
-        return VIDEO_ERROR_INVALID_REQUEST;
-    }
-
-    /* Find control in table */
-    pu_control_t *ctrl = NULL;
-    for (unsigned i = 0; i < PU_CONTROL_COUNT; i++) {
-        if (s_pu_controls[i].cs == cs) {
-            ctrl = &s_pu_controls[i];
-            break;
+    if (entity_id == PU_ENTITY_ID) {
+        /* ---- Processing Unit controls (int16_t) ---- */
+        pu_control_t *ctrl = NULL;
+        for (unsigned i = 0; i < PU_CONTROL_COUNT; i++) {
+            if (s_pu_controls[i].cs == cs) {
+                ctrl = &s_pu_controls[i];
+                break;
+            }
         }
-    }
-    if (!ctrl) {
-        return VIDEO_ERROR_INVALID_REQUEST;
-    }
-
-    if (stage == CONTROL_STAGE_SETUP) {
-        switch (request->bRequest) {
-        case VIDEO_REQUEST_GET_CUR:
-            return tud_control_xfer(rhport, request, &ctrl->cur, sizeof(int16_t))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        case VIDEO_REQUEST_GET_MIN:
-            return tud_control_xfer(rhport, request, &ctrl->min, sizeof(int16_t))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        case VIDEO_REQUEST_GET_MAX:
-            return tud_control_xfer(rhport, request, &ctrl->max, sizeof(int16_t))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        case VIDEO_REQUEST_GET_RES:
-            return tud_control_xfer(rhport, request, &ctrl->res, sizeof(int16_t))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        case VIDEO_REQUEST_GET_DEF:
-            return tud_control_xfer(rhport, request, &ctrl->def, sizeof(int16_t))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        case VIDEO_REQUEST_GET_INFO: {
-            static uint8_t const info = 0x03; /* supports GET and SET */
-            return tud_control_xfer(rhport, request, (uint8_t *)(uintptr_t)&info, sizeof(info))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        }
-        case VIDEO_REQUEST_SET_CUR:
-            return tud_control_xfer(rhport, request, &s_pu_set_buf, sizeof(s_pu_set_buf))
-                   ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
-        default:
+        if (!ctrl) {
             return VIDEO_ERROR_INVALID_REQUEST;
         }
-    } else if (stage == CONTROL_STAGE_DATA) {
-        if (request->bRequest == VIDEO_REQUEST_SET_CUR) {
-            if (s_pu_set_buf < ctrl->min) s_pu_set_buf = ctrl->min;
-            if (s_pu_set_buf > ctrl->max) s_pu_set_buf = ctrl->max;
-            ctrl->cur = s_pu_set_buf;
-            ESP_LOGI(TAG, "PU SET_CUR cs=0x%02x val=%d", cs, ctrl->cur);
-            uvc_pu_control_set_cb(cs, ctrl->cur);
+
+        if (stage == CONTROL_STAGE_SETUP) {
+            switch (request->bRequest) {
+            case VIDEO_REQUEST_GET_CUR:
+                return tud_control_xfer(rhport, request, &ctrl->cur, sizeof(int16_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_MIN:
+                return tud_control_xfer(rhport, request, &ctrl->min, sizeof(int16_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_MAX:
+                return tud_control_xfer(rhport, request, &ctrl->max, sizeof(int16_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_RES:
+                return tud_control_xfer(rhport, request, &ctrl->res, sizeof(int16_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_DEF:
+                return tud_control_xfer(rhport, request, &ctrl->def, sizeof(int16_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_INFO: {
+                static uint8_t const info = 0x03; /* supports GET and SET */
+                return tud_control_xfer(rhport, request, (uint8_t *)(uintptr_t)&info, sizeof(info))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            }
+            case VIDEO_REQUEST_SET_CUR:
+                return tud_control_xfer(rhport, request, &s_pu_set_buf, sizeof(s_pu_set_buf))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            default:
+                return VIDEO_ERROR_INVALID_REQUEST;
+            }
+        } else if (stage == CONTROL_STAGE_DATA) {
+            if (request->bRequest == VIDEO_REQUEST_SET_CUR) {
+                if (s_pu_set_buf < ctrl->min) s_pu_set_buf = ctrl->min;
+                if (s_pu_set_buf > ctrl->max) s_pu_set_buf = ctrl->max;
+                ctrl->cur = s_pu_set_buf;
+                ESP_LOGI(TAG, "PU SET_CUR cs=0x%02x val=%d", cs, ctrl->cur);
+                uvc_pu_control_set_cb(cs, ctrl->cur);
+            }
         }
+        return VIDEO_ERROR_NONE;
+
+    } else if (entity_id == XU_ENTITY_ID) {
+        /* ---- Extension Unit controls (uint8_t) ---- */
+        xu_control_t *ctrl = NULL;
+        for (unsigned i = 0; i < XU_CONTROL_COUNT; i++) {
+            if (s_xu_controls[i].cs == cs) {
+                ctrl = &s_xu_controls[i];
+                break;
+            }
+        }
+        if (!ctrl) {
+            return VIDEO_ERROR_INVALID_REQUEST;
+        }
+
+        if (stage == CONTROL_STAGE_SETUP) {
+            switch (request->bRequest) {
+            case VIDEO_REQUEST_GET_CUR:
+                return tud_control_xfer(rhport, request, &ctrl->cur, sizeof(uint8_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_MIN:
+                return tud_control_xfer(rhport, request, &ctrl->min, sizeof(uint8_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_MAX:
+                return tud_control_xfer(rhport, request, &ctrl->max, sizeof(uint8_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_RES:
+                return tud_control_xfer(rhport, request, &ctrl->res, sizeof(uint8_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_DEF:
+                return tud_control_xfer(rhport, request, &ctrl->def, sizeof(uint8_t))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            case VIDEO_REQUEST_GET_INFO: {
+                static uint8_t const info = 0x03; /* supports GET and SET */
+                return tud_control_xfer(rhport, request, (uint8_t *)(uintptr_t)&info, sizeof(info))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            }
+            case VIDEO_REQUEST_SET_CUR:
+                return tud_control_xfer(rhport, request, &s_xu_set_buf, sizeof(s_xu_set_buf))
+                       ? VIDEO_ERROR_NONE : VIDEO_ERROR_UNKNOWN;
+            default:
+                return VIDEO_ERROR_INVALID_REQUEST;
+            }
+        } else if (stage == CONTROL_STAGE_DATA) {
+            if (request->bRequest == VIDEO_REQUEST_SET_CUR) {
+                if (s_xu_set_buf < ctrl->min) s_xu_set_buf = ctrl->min;
+                if (s_xu_set_buf > ctrl->max) s_xu_set_buf = ctrl->max;
+                ctrl->cur = s_xu_set_buf;
+                ESP_LOGI(TAG, "XU SET_CUR cs=0x%02x val=%u", cs, ctrl->cur);
+                uvc_xu_control_set_cb(cs, ctrl->cur);
+            }
+        }
+        return VIDEO_ERROR_NONE;
     }
-    return VIDEO_ERROR_NONE;
+
+    return VIDEO_ERROR_INVALID_REQUEST;
 }
 
 esp_err_t uvc_device_config(int index, uvc_device_config_t *config)

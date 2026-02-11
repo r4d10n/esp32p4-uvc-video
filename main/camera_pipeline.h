@@ -14,6 +14,7 @@ extern "C" {
 #endif
 
 #define CAM_BUFFER_COUNT    2
+#define ISP_NUM_PROFILES    6
 
 typedef struct {
     int cap_fd;                             /* V4L2 capture device fd (/dev/video0) */
@@ -58,6 +59,13 @@ esp_err_t camera_dequeue(camera_ctx_t *ctx, uint32_t *buf_index, uint32_t *bytes
  * @brief Re-queue a buffer after processing
  */
 esp_err_t camera_enqueue(camera_ctx_t *ctx, uint32_t buf_index);
+
+/**
+ * @brief Apply an ISP color profile (CCM + WB + gamma + sharpen)
+ *
+ * @param profile_idx  Profile index 0..ISP_NUM_PROFILES-1
+ */
+void camera_apply_isp_profile(int profile_idx);
 
 #ifdef __cplusplus
 }

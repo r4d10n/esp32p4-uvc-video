@@ -1,5 +1,38 @@
 menu "UVC Webcam Configuration"
 
+    menu "ISP Color Profile"
+        choice ISP_DEFAULT_PROFILE_CHOICE
+            prompt "Default ISP color temperature profile"
+            default ISP_PROFILE_DAYLIGHT
+            help
+                Select the default ISP color correction profile applied at camera start.
+                Each profile contains a Color Correction Matrix and White Balance gains
+                tuned for a specific lighting condition (from RPi libcamera OV5647 calibration).
+
+            config ISP_PROFILE_TUNGSTEN
+                bool "Tungsten (2873K)"
+            config ISP_PROFILE_INDOOR_WARM
+                bool "Indoor-Warm (3725K)"
+            config ISP_PROFILE_FLUORESCENT
+                bool "Fluorescent (5095K)"
+            config ISP_PROFILE_DAYLIGHT
+                bool "Daylight (6015K)"
+            config ISP_PROFILE_CLOUDY
+                bool "Cloudy (6865K)"
+            config ISP_PROFILE_SHADE
+                bool "Shade (7600K)"
+        endchoice
+
+        config ISP_DEFAULT_PROFILE_INDEX
+            int
+            default 0 if ISP_PROFILE_TUNGSTEN
+            default 1 if ISP_PROFILE_INDOOR_WARM
+            default 2 if ISP_PROFILE_FLUORESCENT
+            default 3 if ISP_PROFILE_DAYLIGHT
+            default 4 if ISP_PROFILE_CLOUDY
+            default 5 if ISP_PROFILE_SHADE
+    endmenu
+
     menu "MJPEG Settings"
         config UVC_JPEG_QUALITY
             int "JPEG compression quality"

@@ -13,6 +13,7 @@
 #include "linux/videodev2.h"
 #include "esp_video_device.h"
 #include "uvc_controls.h"
+#include "camera_pipeline.h"
 
 static const char *TAG = "uvc_ctrl";
 
@@ -128,5 +129,25 @@ void uvc_pu_control_set_cb(uint8_t cs, int16_t value)
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "PU cs=0x%02x -> V4L2 0x%08lx = %d",
                  cs, (unsigned long)v4l2_cid, (int)value);
+    }
+}
+
+/*
+ * ---- UVC XU control -> ISP profile switch ----
+ *
+ * Called from the TinyUSB task when the host sends a SET_CUR request
+ * for an Extension Unit control. Overrides the weak callback in
+ * usb_device_uvc.c.
+ *
+ * XU control selectors:
+ *   0x01 = ISP Profile Select (0=Tungsten .. 5=Shade)
+ */
+void uvc_xu_control_set_cb(uint8_t cs, uint8_t value)
+{
+    if (cs == 0x01) {
+        ESP_LOGI(TAG, "XU ISP Profile: %u", value);
+        camera_apply_isp_profile((int)value);
+    } else {
+        ESP_LOGW(TAG, "Unknown XU cs=0x%02x", cs);
     }
 }

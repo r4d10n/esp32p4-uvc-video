@@ -221,10 +221,11 @@ static const isp_color_profile_t s_profiles[] = {
     },
 };
 
-#define ISP_NUM_PROFILES  (sizeof(s_profiles) / sizeof(s_profiles[0]))
-#define ISP_DEFAULT_PROFILE 3   /* Daylight - broadest appeal across lighting conditions */
+_Static_assert(sizeof(s_profiles) / sizeof(s_profiles[0]) == ISP_NUM_PROFILES,
+               "s_profiles array size must match ISP_NUM_PROFILES");
+#define ISP_DEFAULT_PROFILE CONFIG_ISP_DEFAULT_PROFILE_INDEX
 
-static void camera_apply_isp_profile(int cap_fd, int profile_idx)
+void camera_apply_isp_profile(int profile_idx)
 {
     if (profile_idx >= ISP_NUM_PROFILES) {
         profile_idx = ISP_DEFAULT_PROFILE;
@@ -402,7 +403,7 @@ esp_err_t camera_start(camera_ctx_t *ctx, uint32_t width, uint32_t height, uint3
     ESP_LOGI(TAG, "Camera streaming started (%lu buffers)", (unsigned long)CAM_BUFFER_COUNT);
 
     /* Apply ISP color correction after streaming is active */
-    camera_apply_isp_profile(ctx->cap_fd, ISP_DEFAULT_PROFILE);
+    camera_apply_isp_profile(ISP_DEFAULT_PROFILE);
 
     return ESP_OK;
 }

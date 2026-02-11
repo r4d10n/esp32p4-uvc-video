@@ -31,6 +31,7 @@
 #define UVC_ENTITY_CAP_INPUT_TERMINAL   0x01
 #define UVC_ENTITY_PROCESSING_UNIT      0x02
 #define UVC_ENTITY_CAP_OUTPUT_TERMINAL  0x03
+#define UVC_ENTITY_ISP_XU               0x04
 
 /* ---------- clock -------------------------------------------------------- */
 #define UVC_CLOCK_FREQUENCY  27000000
@@ -73,6 +74,39 @@ enum {
 #define PU_CTRL_BYTE1  0x00
 #define PU_CTRL_BYTE2  0x00
 
+/* ---------- Extension Unit: ISP Color Profile ---------------------------- */
+/*
+ * Custom GUID for ESP32-P4 ISP Profile Extension Unit.
+ * Generated as a unique identifier for this vendor-specific control.
+ */
+#define XU_ISP_PROFILE_GUID \
+    0x01, 0x00, 0x3A, 0x30, \
+    0x49, 0x53, 0x50, 0x50, \
+    0x80, 0x00, 0x00, 0xAA, \
+    0x00, 0x38, 0x9B, 0x71
+
+/*
+ * Extension Unit descriptor (UVC 1.5 Table 4-15)
+ * bLength            = 26
+ * bDescriptorType    = 0x24 (CS_INTERFACE)
+ * bDescriptorSubtype = 0x06 (VC_EXTENSION_UNIT)
+ * bUnitID            = 0x04
+ * guidExtensionCode  = XU_ISP_PROFILE_GUID (16 bytes)
+ * bNumControls       = 1
+ * bNrInPins          = 1
+ * baSourceID[0]      = 0x02 (Processing Unit)
+ * bControlSize       = 1
+ * bmControls         = 0x01 (bit 0 = ISP Profile Select)
+ * iExtension         = 0
+ */
+#define TUD_VIDEO_DESC_EXTENSION_UNIT_ISP_LEN 26
+
+#define TUD_VIDEO_DESC_EXTENSION_UNIT_ISP \
+    TUD_VIDEO_DESC_EXTENSION_UNIT_ISP_LEN, \
+    TUSB_DESC_CS_INTERFACE, 0x06, UVC_ENTITY_ISP_XU, \
+    XU_ISP_PROFILE_GUID, \
+    1, 1, UVC_ENTITY_PROCESSING_UNIT, 1, 0x01, 0x00
+
 /* ---------- Custom VS Input Header for 3 formats ------------------------ */
 /*
  * TinyUSB's TUD_VIDEO_DESC_CS_VS_INPUT only works for bNumFormats=1
@@ -106,6 +140,7 @@ enum {
 #define VC_TOTAL_INNER_LEN ( \
     TUD_VIDEO_DESC_CAMERA_TERM_LEN + \
     TUD_VIDEO_DESC_PROCESSING_UNIT_LEN + \
+    TUD_VIDEO_DESC_EXTENSION_UNIT_ISP_LEN + \
     TUD_VIDEO_DESC_OUTPUT_TERM_LEN \
 )
 
@@ -177,10 +212,11 @@ enum {
         UVC_ENTITY_CAP_INPUT_TERMINAL, \
         PU_CTRL_BYTE0, PU_CTRL_BYTE1, PU_CTRL_BYTE2 \
     ), \
+    TUD_VIDEO_DESC_EXTENSION_UNIT_ISP, \
     TUD_VIDEO_DESC_OUTPUT_TERM( \
         UVC_ENTITY_CAP_OUTPUT_TERMINAL, \
         VIDEO_TT_STREAMING, 0, \
-        UVC_ENTITY_PROCESSING_UNIT, 0 \
+        UVC_ENTITY_ISP_XU, 0 \
     ), \
     \
     /* ==== Video Streaming Interface (Bulk, single alt) ==== */ \
