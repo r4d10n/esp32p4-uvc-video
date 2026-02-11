@@ -209,14 +209,20 @@ esp_err_t encoder_encode(encoder_ctx_t *ctx, uint8_t *raw_buf, uint32_t raw_len,
                         ESP_FAIL, TAG, "DQBUF output failed");
 
     /*
-     * Invalidate CPU data cache for the capture buffer region.
-     * The H.264/JPEG encoder writes via DMA, bypassing the CPU cache.
-     * Without this, CPU reads stale cache lines → corrupted NAL units.
+     * No application-level cache sync needed — both encoder drivers handle
+     * cache coherency internally:
+     *
+     * JPEG (IDF jpeg_encode.c):
+     *   Writes JPEG markers (FFD8, APP0, DQT, SOF, DHT, SOS) via CPU into
+     *   the output buffer, then DMA writes the compressed body after the
+     *   header.  The driver invalidates cache for the DMA region.  The header
+     *   remains valid in CPU cache only.  An M2C here would destroy it.
+     *
+     * H.264 (esp_h264_enc_single_hw.c):
+     *   Writes SPS/PPS/slice headers via CPU, flushes them to PSRAM (C2M),
+     *   DMA writes compressed body, then the driver invalidates the full
+     *   buffer (M2C) and re-patches the slice start code with a final C2M.
      */
-    /* Round up to cache line size (64 bytes) for alignment requirement */
-    uint32_t aligned_len = (cap_buf.bytesused + 63) & ~63;
-    esp_cache_msync(ctx->capture_buffer, aligned_len,
-                    ESP_CACHE_MSYNC_FLAG_DIR_M2C);
 
     *enc_buf = ctx->capture_buffer;
     *enc_len = cap_buf.bytesused;
