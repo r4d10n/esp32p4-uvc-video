@@ -69,9 +69,10 @@ enum {
  *   Byte 1: D0=Backlight, D1=Gain, D2=PowerLine, D3=HueAuto, ...
  *   Byte 2: D0=AnalogVideoStd, D1=AnalogLock, D2=ContrastAuto
  *
- * Enable: Brightness(D0), Contrast(D1), Hue(D2), Saturation(D3)
+ * Enable: Brightness(D0), Contrast(D1), Hue(D2), Saturation(D3),
+ *         White Balance Temperature(D6) — used as ISP profile selector (0-5)
  */
-#define PU_CTRL_BYTE0  0x0F
+#define PU_CTRL_BYTE0  0x4F
 #define PU_CTRL_BYTE1  0x00
 #define PU_CTRL_BYTE2  0x00
 

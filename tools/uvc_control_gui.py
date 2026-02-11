@@ -3,17 +3,15 @@
 ESP32-P4 UVC Control Panel
 
 Tkinter GUI for controlling UVC Processing Unit parameters and
-ISP Color Profile via Extension Unit on the ESP32-P4 webcam.
+ISP Color Profile on the ESP32-P4 webcam.
 
-PU controls use v4l2-ctl (subprocess).
-XU ISP profile uses pyusb raw USB control transfers — the Linux
-UVCIOC_CTRL_MAP ioctl is broken on kernel 6.5.x for this device.
+All controls use v4l2-ctl (subprocess) — stream-safe, no driver detach.
+ISP profile is exposed as white_balance_temperature PU control (values 0-5).
 
 Requirements:
     - Python 3.7+
     - tkinter (stdlib)
     - v4l2-ctl (v4l-utils package)
-    - pyusb   (pip install pyusb)
     - Linux with uvcvideo driver
 
 Usage:
@@ -23,87 +21,8 @@ Usage:
 import subprocess
 import glob
 import re
-import time
 import tkinter as tk
-from contextlib import contextmanager
 from tkinter import ttk
-
-# Optional pyusb for XU controls
-try:
-    import usb.core
-    import usb.util
-    HAS_PYUSB = True
-except ImportError:
-    HAS_PYUSB = False
-
-# ---------- USB constants ----------
-
-ESP32_VID = 0x303a
-ESP32_PID = 0x8000
-
-# UVC class-specific request codes
-UVC_GET_CUR = 0x81
-UVC_SET_CUR = 0x01
-
-# XU entity/selector — must match firmware usb_descriptors.h
-XU_UNIT_ID = 0x04
-XU_SELECTOR = 0x01
-XU_WVALUE = XU_SELECTOR << 8           # 0x0100
-XU_WINDEX = (XU_UNIT_ID << 8) | 0x00   # 0x0400  (interface 0)
-
-
-# ---------- pyusb XU helpers ----------
-
-@contextmanager
-def _xu_access(dev):
-    """Detach kernel driver from VC interface for raw USB access, reattach on exit."""
-    detached = False
-    try:
-        if dev.is_kernel_driver_active(0):
-            dev.detach_kernel_driver(0)
-            detached = True
-        yield dev
-    finally:
-        if detached:
-            try:
-                usb.util.release_interface(dev, 0)
-            except Exception:
-                pass
-            try:
-                dev.attach_kernel_driver(0)
-            except Exception:
-                pass
-            # Brief pause for kernel to re-bind uvcvideo
-            time.sleep(0.3)
-
-
-def xu_find_device():
-    """Find the ESP32-P4 USB device. Returns usb.core.Device or None."""
-    if not HAS_PYUSB:
-        return None
-    return usb.core.find(idVendor=ESP32_VID, idProduct=ESP32_PID)
-
-
-def xu_get_cur(dev):
-    """GET_CUR on XU ISP Profile control. Returns profile index or None."""
-    try:
-        with _xu_access(dev):
-            ret = dev.ctrl_transfer(0xA1, UVC_GET_CUR, XU_WVALUE, XU_WINDEX,
-                                    1, timeout=2000)
-            return ret[0]
-    except Exception:
-        return None
-
-
-def xu_set_cur(dev, value):
-    """SET_CUR on XU ISP Profile control. Returns True on success."""
-    try:
-        with _xu_access(dev):
-            dev.ctrl_transfer(0x21, UVC_SET_CUR, XU_WVALUE, XU_WINDEX,
-                              bytes([value & 0xFF]), timeout=2000)
-            return True
-    except Exception:
-        return False
 
 
 # ---------- v4l2-ctl helpers ----------
@@ -164,6 +83,9 @@ ISP_PROFILES = [
     (5, 'Shade (7600K)'),
 ]
 
+# V4L2 control name for ISP profile (mapped from UVC PU White Balance Temperature)
+ISP_PROFILE_CTRL = 'white_balance_temperature'
+
 # ---------- PU control definitions ----------
 
 PU_CONTROLS = [
@@ -186,8 +108,7 @@ class UVCControlPanel:
 
         self.device = tk.StringVar()
         self.profile_var = tk.IntVar(value=3)
-        self.usb_dev = None  # pyusb device handle
-        self.xu_available = False
+        self.profile_available = False
         self.sliders = {}
 
         self._build_ui()
@@ -235,8 +156,8 @@ class UVCControlPanel:
         isp_frame = ttk.LabelFrame(self.root, text='ISP Color Profile', padding=8)
         isp_frame.pack(fill='x', **pad)
 
-        self.xu_status = ttk.Label(isp_frame, text='', foreground='gray')
-        self.xu_status.pack(anchor='w')
+        self.profile_status = ttk.Label(isp_frame, text='', foreground='gray')
+        self.profile_status.pack(anchor='w')
 
         self.profile_buttons = []
         for idx, name in ISP_PROFILES:
@@ -263,9 +184,6 @@ class UVCControlPanel:
         self._set_status('Scanning for devices...')
         devices = find_esp32p4_devices()
         self._devices = devices
-
-        # Also try to find the USB device for XU
-        self.usb_dev = xu_find_device()
 
         if devices:
             self.device_combo['values'] = [f'{d} -- {c}' for d, c in devices]
@@ -300,27 +218,22 @@ class UVCControlPanel:
                 var.set(val)
                 val_label.config(text=str(val))
 
-        # Probe XU availability
-        if self.usb_dev is not None:
-            cur = xu_get_cur(self.usb_dev)
-            if cur is not None:
-                self.xu_available = True
-                self.profile_var.set(cur)
-                self.xu_status.config(
-                    text=f'XU connected via pyusb (current: {cur})',
-                    foreground='green')
-                for rb in self.profile_buttons:
-                    rb.configure(state='normal')
-            else:
-                self._xu_unavailable('XU read failed (permission? try sudo)')
-        elif not HAS_PYUSB:
-            self._xu_unavailable('pyusb not installed (pip install pyusb)')
+        # Probe ISP profile via white_balance_temperature PU control
+        cur = v4l2_get_ctrl(dev, ISP_PROFILE_CTRL)
+        if cur is not None:
+            self.profile_available = True
+            self.profile_var.set(cur)
+            self.profile_status.config(
+                text=f'Via v4l2 {ISP_PROFILE_CTRL} (current: {cur})',
+                foreground='green')
+            for rb in self.profile_buttons:
+                rb.configure(state='normal')
         else:
-            self._xu_unavailable('ESP32-P4 USB device not found')
+            self._profile_unavailable('white_balance_temperature not available')
 
-    def _xu_unavailable(self, msg):
-        self.xu_available = False
-        self.xu_status.config(text=msg, foreground='red')
+    def _profile_unavailable(self, msg):
+        self.profile_available = False
+        self.profile_status.config(text=msg, foreground='red')
         for rb in self.profile_buttons:
             rb.configure(state='disabled')
 
@@ -334,19 +247,18 @@ class UVCControlPanel:
             v4l2_set_ctrl(dev, ctrl_name, value)
 
     def _on_profile_change(self):
-        if not self.xu_available or self.usb_dev is None:
-            self._set_status('Cannot set profile: XU not available')
+        if not self.profile_available:
+            self._set_status('Cannot set profile: control not available')
             return
 
         idx = self.profile_var.get()
         self._set_status(f'Setting ISP profile {idx}...')
         self.root.update_idletasks()
 
-        ok = xu_set_cur(self.usb_dev, idx)
-        if ok:
+        dev = self._get_device_path()
+        if dev:
+            v4l2_set_ctrl(dev, ISP_PROFILE_CTRL, idx)
             self._set_status(f'ISP profile: {ISP_PROFILES[idx][1]}')
-        else:
-            self._set_status(f'Failed to set ISP profile {idx}')
 
     def _reset_all(self):
         dev = self._get_device_path()
@@ -360,8 +272,8 @@ class UVCControlPanel:
             v4l2_set_ctrl(dev, ctrl_name, cdef)
 
         self.profile_var.set(3)  # Daylight default
-        if self.xu_available and self.usb_dev is not None:
-            xu_set_cur(self.usb_dev, 3)
+        if self.profile_available:
+            v4l2_set_ctrl(dev, ISP_PROFILE_CTRL, 3)
 
         self._set_status('All controls reset to defaults')
 
@@ -379,10 +291,6 @@ def main():
         print('  sudo pacman -S v4l-utils    # Arch/Manjaro')
         print('  sudo apt install v4l-utils   # Debian/Ubuntu')
         return 1
-
-    if not HAS_PYUSB:
-        print('Warning: pyusb not installed. ISP profile control will be disabled.')
-        print('  pip install pyusb')
 
     root = tk.Tk()
     UVCControlPanel(root)

@@ -118,6 +118,13 @@ void uvc_pu_control_set_cb(uint8_t cs, int16_t value)
         return;
     }
 
+    /* WB Temperature (0x0A) is repurposed as ISP profile selector (0-5) */
+    if (cs == 0x0A) {
+        ESP_LOGI(TAG, "PU WB Temp -> ISP profile %d", (int)value);
+        camera_apply_isp_profile((int)value);
+        return;
+    }
+
     uint32_t v4l2_cid;
     switch (cs) {
     case 0x02: v4l2_cid = V4L2_CID_BRIGHTNESS; break;

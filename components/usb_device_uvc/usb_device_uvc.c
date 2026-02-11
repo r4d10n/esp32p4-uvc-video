@@ -246,10 +246,11 @@ int tud_video_commit_cb(uint_fast8_t ctl_idx, uint_fast8_t stm_idx,
  */
 
 /* UVC PU control selectors (UVC 1.5 spec Table A-12) */
-#define PU_BRIGHTNESS_CONTROL   0x02
-#define PU_CONTRAST_CONTROL     0x03
-#define PU_HUE_CONTROL          0x06
-#define PU_SATURATION_CONTROL   0x07
+#define PU_BRIGHTNESS_CONTROL               0x02
+#define PU_CONTRAST_CONTROL                 0x03
+#define PU_HUE_CONTROL                      0x06
+#define PU_SATURATION_CONTROL               0x07
+#define PU_WHITE_BALANCE_TEMPERATURE_CONTROL 0x0A
 
 /* Must match UVC_ENTITY_PROCESSING_UNIT in usb_descriptors.h */
 #define PU_ENTITY_ID  0x02
@@ -264,10 +265,11 @@ typedef struct {
 } pu_control_t;
 
 static pu_control_t s_pu_controls[] = {
-    { PU_BRIGHTNESS_CONTROL, 0,    -127, 127, 1, 0   },
-    { PU_CONTRAST_CONTROL,   128,  0,    256, 1, 128  },
-    { PU_HUE_CONTROL,        0,    0,    255, 1, 0    },
-    { PU_SATURATION_CONTROL, 128,  0,    256, 1, 128  },
+    { PU_BRIGHTNESS_CONTROL,               0,    -127, 127, 1, 0   },
+    { PU_CONTRAST_CONTROL,                 128,  0,    256, 1, 128  },
+    { PU_HUE_CONTROL,                      0,    0,    255, 1, 0    },
+    { PU_SATURATION_CONTROL,               128,  0,    256, 1, 128  },
+    { PU_WHITE_BALANCE_TEMPERATURE_CONTROL, 3,   0,    5,   1, 3    },  /* ISP profile index */
 };
 #define PU_CONTROL_COUNT (sizeof(s_pu_controls) / sizeof(s_pu_controls[0]))
 
