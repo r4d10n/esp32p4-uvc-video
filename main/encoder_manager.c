@@ -56,6 +56,24 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
     uint32_t output_fmt = (ctx->type == ENCODER_TYPE_JPEG) ?
                            V4L2_PIX_FMT_JPEG : V4L2_PIX_FMT_H264;
 
+    /*
+     * The M2M driver cross-validates OUTPUT vs CAPTURE format on S_FMT.
+     * If the resolution changed since the last session, the old format
+     * is still cached and S_FMT will be rejected.  Reopen the device
+     * to reset the internal state.
+     */
+    if (ctx->width && (ctx->width != width || ctx->height != height)) {
+        const char *devpath = (ctx->type == ENCODER_TYPE_JPEG) ?
+                               ESP_VIDEO_JPEG_DEVICE_NAME : ESP_VIDEO_H264_DEVICE_NAME;
+        close(ctx->m2m_fd);
+        ctx->m2m_fd = open(devpath, O_RDONLY);
+        ESP_RETURN_ON_FALSE(ctx->m2m_fd >= 0, ESP_FAIL, TAG,
+                            "Failed to reopen %s for resolution change", devpath);
+        ESP_LOGI(TAG, "Encoder fd reopened for %lux%lu -> %lux%lu",
+                 (unsigned long)ctx->width, (unsigned long)ctx->height,
+                 (unsigned long)width, (unsigned long)height);
+    }
+
     ctx->width = width;
     ctx->height = height;
     ctx->input_pixfmt = input_fmt;

@@ -9,6 +9,7 @@
 #include "esp_check.h"
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
+#include "esp_cache.h"
 #include "linux/videodev2.h"
 #include <sys/ioctl.h>
 #include "usb_device_uvc.h"
@@ -121,6 +122,10 @@ static stream_format_t uvc_format_to_stream_format(uvc_format_t uvc_fmt)
 
 /* ---- Stream lifecycle -------------------------------------------------- */
 
+/* Forward declaration — on_stream_start may call on_stream_stop for seamless
+ * format/resolution switches without an explicit host stop. */
+static void on_stream_stop(void *cb_ctx);
+
 /*
  * Called when the USB host starts video streaming.
  * The host has already negotiated format/frame/fps via VS Probe/Commit.
@@ -132,6 +137,15 @@ static stream_format_t uvc_format_to_stream_format(uvc_format_t uvc_fmt)
 static esp_err_t on_stream_start(uvc_format_t uvc_format, int width, int height, int rate, void *cb_ctx)
 {
     uvc_stream_ctx_t *ctx = (uvc_stream_ctx_t *)cb_ctx;
+
+    /*
+     * The host may send a new VS_COMMIT (format/resolution change) without
+     * an explicit stream stop.  Tear down the previous stream first.
+     */
+    if (ctx->streaming) {
+        ESP_LOGW(TAG, "Stream still active — stopping previous stream before restart");
+        on_stream_stop(cb_ctx);
+    }
 
     ctx->active_format = uvc_format_to_stream_format(uvc_format);
     ctx->negotiated_width = width;
@@ -265,6 +279,9 @@ static uvc_fb_t *on_fb_get(void *cb_ctx)
             raw_len = ctx->negotiated_width * ctx->negotiated_height * 2;
         }
         raw_data = ctx->crop_buf;
+        /* Flush CPU cache to PSRAM so encoder/USB DMA sees the cropped data */
+        esp_cache_msync(ctx->crop_buf, (raw_len + 63) & ~63,
+                        ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         /* Camera buffer can be re-queued immediately since we copied data */
         camera_enqueue(&ctx->camera, buf_idx);
         buf_idx = UINT32_MAX;  /* Sentinel: already re-queued */
