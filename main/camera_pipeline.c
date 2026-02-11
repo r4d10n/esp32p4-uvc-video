@@ -25,6 +25,7 @@
 static const char *TAG = "cam_pipe";
 
 static esp_ldo_channel_handle_t s_ldo_handle;
+static int s_isp_fd = -1;  /* Cached ISP device fd for persistent control settings */
 
 esp_err_t camera_init(void)
 {
@@ -232,13 +233,18 @@ void camera_apply_isp_profile(int profile_idx)
     }
     const isp_color_profile_t *p = &s_profiles[profile_idx];
 
-    /* ISP controls go to the ISP device, not the CSI capture device */
-    int fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
-    if (fd < 0) {
-        ESP_LOGW(TAG, "Cannot open ISP device %s, skipping color config",
-                 ESP_VIDEO_ISP1_DEVICE_NAME);
-        return;
+    /* ISP controls go to the ISP device, not the CSI capture device.
+     * The fd is cached because the ISP driver resets controls when the
+     * fd is closed — so we keep it open for the lifetime of the process. */
+    if (s_isp_fd < 0) {
+        s_isp_fd = open(ESP_VIDEO_ISP1_DEVICE_NAME, O_RDWR);
+        if (s_isp_fd < 0) {
+            ESP_LOGW(TAG, "Cannot open ISP device %s, skipping color config",
+                     ESP_VIDEO_ISP1_DEVICE_NAME);
+            return;
+        }
     }
+    int fd = s_isp_fd;
 
     ESP_LOGI(TAG, "Applying ISP profile [%d] '%s' via %s",
              profile_idx, p->name, ESP_VIDEO_ISP1_DEVICE_NAME);
@@ -341,8 +347,6 @@ void camera_apply_isp_profile(int profile_idx)
      * but returns ESP_ERR_NOT_SUPPORTED (0x106) at runtime.
      * TODO: Enable when IDF adds BLC driver support.
      */
-
-    close(fd);
 }
 
 esp_err_t camera_start(camera_ctx_t *ctx, uint32_t width, uint32_t height, uint32_t pixfmt)
