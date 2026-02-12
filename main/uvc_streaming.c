@@ -15,10 +15,11 @@
 #include "usb_device_uvc.h"
 #include "uvc_streaming.h"
 #include "uvc_frame_config.h"
+#include "rtsp_server.h"
 
 static const char *TAG = "uvc_stream";
 
-/* Largest uncompressed frame: UYVY 800x800 = 2 bytes/pixel */
+/* Largest uncompressed frame: UYVY 1920x1080 = 2 bytes/pixel = 4,147,200 bytes */
 #define UVC_MAX_FRAME_BUFFER_SIZE  (CAMERA_CAPTURE_WIDTH * CAMERA_CAPTURE_HEIGHT * 2)
 
 /* ---- Software center-crop functions ------------------------------------ */
@@ -316,6 +317,11 @@ static uvc_fb_t *on_fb_get(void *cb_ctx)
         ctx->pending_cam_buf_idx = buf_idx;
     }
     /* else: UYVY raw with crop — data is in crop_buf, camera already re-queued */
+
+    /* 3b. Feed H.264 frame to RTSP/RTP server (non-blocking copy) */
+    if (ctx->active_format == STREAM_FORMAT_H264 && frame_len > 0) {
+        rtsp_server_feed_h264(frame_data, frame_len);
+    }
 
     /* 4. Fill the UVC frame buffer */
     ctx->fb.buf    = frame_data;

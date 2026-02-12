@@ -6,7 +6,9 @@
  * Multi-format UVC 1.5 descriptor for ESP32-P4 webcam (Bulk mode).
  *
  * Advertises 3 formats simultaneously: UYVY, MJPEG, H.264
- * Each format supports 3 resolutions: 800x800, 640x480, 320x240
+ *   - UYVY:  2 frames (640x480, 320x240) — 1080p too large for USB bulk
+ *   - MJPEG: 3 frames (1920x1080, 1280x720, 640x480)
+ *   - H.264: 3 frames (1920x1080, 1280x720, 640x480)
  *
  * Descriptor hierarchy:
  *   VideoControl Interface
@@ -16,9 +18,9 @@
  *     +-- Output Terminal (OT)
  *   VideoStreaming Interface (Bulk)
  *     +-- VS Input Header (bNumFormats=3)
- *     +-- Format 1: UYVY (3 frames: 800x800, 640x480, 320x240)
- *     +-- Format 2: MJPEG (3 frames: 800x800, 640x480, 320x240)
- *     +-- Format 3: H.264 (3 frames: 800x800, 640x480, 320x240)
+ *     +-- Format 1: UYVY (2 frames: 640x480, 320x240)
+ *     +-- Format 2: MJPEG (3 frames: 1920x1080, 1280x720, 640x480)
+ *     +-- Format 3: H.264 (3 frames: 1920x1080, 1280x720, 640x480)
  *     +-- Color Matching
  *     +-- Bulk Endpoint
  */
@@ -238,46 +240,40 @@ enum {
     TUD_VIDEO_DESC_CS_VS_FMT_UYVY( \
         1, UYVY_FRAME_COUNT, 1, 0, 0, 0, 0 \
     ), \
-    /* Frame 1: 800x800 @15fps */ \
+    /* Frame 1: 640x480 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
-        1, 0, 800, 800, \
-        800*800*2, 800*800*2*15, 800*800*2, \
-        FI(15), FI(15), FI(15), FI(15) \
-    ), \
-    /* Frame 2: 640x480 @30fps */ \
-    TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
-        2, 0, 640, 480, \
+        1, 0, 640, 480, \
         640*480*2, 640*480*2*30, 640*480*2, \
         FI(30), FI(30), FI(30), FI(30) \
     ), \
-    /* Frame 3: 320x240 @50fps */ \
+    /* Frame 2: 320x240 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_UNCOMPR_CONT( \
-        3, 0, 320, 240, \
-        320*240*2, 320*240*2*50, 320*240*2, \
-        FI(50), FI(50), FI(50), FI(50) \
+        2, 0, 320, 240, \
+        320*240*2, 320*240*2*30, 320*240*2, \
+        FI(30), FI(30), FI(30), FI(30) \
     ), \
     \
     /* ---- Format 2: MJPEG ---- */ \
     TUD_VIDEO_DESC_CS_VS_FMT_MJPEG( \
         2, MJPEG_FRAME_COUNT, 0, 1, 0, 0, 0, 0 \
     ), \
-    /* Frame 1: 800x800 @50fps */ \
+    /* Frame 1: 1920x1080 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        1, 0, 800, 800, \
-        800*800*16, 800*800*16*50, 800*800*16/8, \
-        FI(50), FI(50), FI(50), FI(50) \
+        1, 0, 1920, 1080, \
+        1920*1080*16, 1920*1080*16*30, 1920*1080*16/8, \
+        FI(30), FI(30), FI(30), FI(30) \
     ), \
-    /* Frame 2: 640x480 @50fps */ \
+    /* Frame 2: 1280x720 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        2, 0, 640, 480, \
-        640*480*16, 640*480*16*50, 640*480*16/8, \
-        FI(50), FI(50), FI(50), FI(50) \
+        2, 0, 1280, 720, \
+        1280*720*16, 1280*720*16*30, 1280*720*16/8, \
+        FI(30), FI(30), FI(30), FI(30) \
     ), \
-    /* Frame 3: 320x240 @50fps */ \
+    /* Frame 3: 640x480 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_MJPEG_CONT( \
-        3, 0, 320, 240, \
-        320*240*16, 320*240*16*50, 320*240*16/8, \
-        FI(50), FI(50), FI(50), FI(50) \
+        3, 0, 640, 480, \
+        640*480*16, 640*480*16*30, 640*480*16/8, \
+        FI(30), FI(30), FI(30), FI(30) \
     ), \
     \
     /* ---- Format 3: H.264 (Frame-Based) ---- */ \
@@ -285,23 +281,23 @@ enum {
         3, H264_FRAME_COUNT, \
         TUD_VIDEO_GUID_H264, 16, 1, 0, 0, 0, 0, 1 \
     ), \
-    /* Frame 1: 800x800 @50fps */ \
+    /* Frame 1: 1920x1080 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        1, 0, 800, 800, \
-        800*800*16, 800*800*16*50, \
-        FI(50), 0, FI(50), FI(50), FI(50) \
+        1, 0, 1920, 1080, \
+        1920*1080*16, 1920*1080*16*30, \
+        FI(30), 0, FI(30), FI(30), FI(30) \
     ), \
-    /* Frame 2: 640x480 @50fps */ \
+    /* Frame 2: 1280x720 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        2, 0, 640, 480, \
-        640*480*16, 640*480*16*50, \
-        FI(50), 0, FI(50), FI(50), FI(50) \
+        2, 0, 1280, 720, \
+        1280*720*16, 1280*720*16*30, \
+        FI(30), 0, FI(30), FI(30), FI(30) \
     ), \
-    /* Frame 3: 320x240 @50fps */ \
+    /* Frame 3: 640x480 @30fps */ \
     TUD_VIDEO_DESC_CS_VS_FRM_FRAME_BASED_CONT( \
-        3, 0, 320, 240, \
-        320*240*16, 320*240*16*50, \
-        FI(50), 0, FI(50), FI(50), FI(50) \
+        3, 0, 640, 480, \
+        640*480*16, 640*480*16*30, \
+        FI(30), 0, FI(30), FI(30), FI(30) \
     ), \
     \
     /* Color Matching */ \

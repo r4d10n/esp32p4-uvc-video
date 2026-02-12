@@ -6,6 +6,9 @@ idf_component_register(
         "uvc_streaming.c"
         "uvc_controls.c"
         "perf_monitor.c"
+        "eth_init.c"
+        "rtsp_server.c"
+        "rtp_sender.c"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES
@@ -15,4 +18,7 @@ idf_component_register(
         esp_video
         espressif__tinyusb
         usb_device_uvc
+        esp_eth
+        esp_netif
+        esp_event
 )

@@ -19,6 +19,8 @@
 #include "uvc_controls.h"
 #include "uvc_streaming.h"
 #include "perf_monitor.h"
+#include "eth_init.h"
+#include "rtsp_server.h"
 
 static const char *TAG = "app_main";
 
@@ -58,8 +60,21 @@ void app_main(void)
                              CONFIG_UVC_H264_MIN_QP,
                              CONFIG_UVC_H264_MAX_QP);
 
-    /* Phase 5: Start performance monitor (CPU, memory, streaming stats) */
+    /* Phase 5: Initialize Ethernet (non-blocking, DHCP in background) */
+    ret = eth_init();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Ethernet init failed: %s (RTSP unavailable)", esp_err_to_name(ret));
+    } else {
+        /* Phase 6: Start RTSP server (listens on port 554) */
+        ret = rtsp_server_start();
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "RTSP server start failed: %s", esp_err_to_name(ret));
+        }
+    }
+
+    /* Phase 7: Start performance monitor (CPU, memory, streaming stats) */
     perf_monitor_start(&stream_ctx);
 
     ESP_LOGI(TAG, "UVC device ready - connect USB to host");
+    ESP_LOGI(TAG, "RTSP stream: rtsp://<device-ip>:554/stream");
 }

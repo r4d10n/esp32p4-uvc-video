@@ -100,9 +100,12 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
 
     /* Configure H.264 encoder parameters before starting */
     if (ctx->type == ENCODER_TYPE_H264) {
+        /* Scale bitrate with resolution */
+        int bitrate = (width >= 1920) ? 4000000 :
+                      (width >= 1280) ? 2500000 : 2000000;
         struct v4l2_ext_control ctrls_arr[] = {
             { .id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, .value = 1 },    /* every frame is IDR */
-            { .id = V4L2_CID_MPEG_VIDEO_BITRATE,       .value = 2000000 },
+            { .id = V4L2_CID_MPEG_VIDEO_BITRATE,       .value = bitrate },
             { .id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,   .value = 20 },
             { .id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,   .value = 40 },
         };
@@ -114,7 +117,8 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
         if (ioctl(ctx->m2m_fd, VIDIOC_S_EXT_CTRLS, &ctrls) != 0) {
             ESP_LOGW(TAG, "H.264 ext ctrls set failed (non-fatal)");
         } else {
-            ESP_LOGI(TAG, "H.264: GOP=1 (all IDR), bitrate=2Mbps, QP=20-40");
+            ESP_LOGI(TAG, "H.264: GOP=1 (all IDR), bitrate=%dkbps, QP=20-40",
+                     bitrate / 1000);
         }
     }
 
