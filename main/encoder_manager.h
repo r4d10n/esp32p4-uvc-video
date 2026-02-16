@@ -26,6 +26,13 @@ typedef struct {
     uint32_t width;
     uint32_t height;
     uint32_t input_pixfmt;      /* Pixel format fed into encoder */
+
+    /* H.264 params (0 = use defaults in encoder_start).
+     * Set these before calling encoder_start() to override. */
+    int h264_i_period;          /* IDR interval (default: 1 = all IDR) */
+    int h264_bitrate;           /* Target bitrate in bps (default: auto) */
+    int h264_min_qp;            /* Min QP (default: 20) */
+    int h264_max_qp;            /* Max QP (default: 40) */
 } encoder_ctx_t;
 
 /**

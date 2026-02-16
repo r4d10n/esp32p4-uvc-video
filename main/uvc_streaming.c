@@ -157,6 +157,9 @@ static esp_err_t on_stream_start(uvc_format_t uvc_format, int width, int height,
              width, height, rate, ctx->active_format,
              CAMERA_CAPTURE_WIDTH, CAMERA_CAPTURE_HEIGHT);
 
+    /* Tell RTSP to yield camera/encoder if self-capturing */
+    rtsp_server_notify_uvc_start();
+
     /* Camera always captures at native sensor resolution */
     esp_err_t ret = camera_start(&ctx->camera, CAMERA_CAPTURE_WIDTH,
                                   CAMERA_CAPTURE_HEIGHT, cam_pixfmt);
@@ -241,6 +244,9 @@ static void on_stream_stop(void *cb_ctx)
         ctx->crop_buf = NULL;
         ctx->crop_buf_size = 0;
     }
+
+    /* Tell RTSP it can resume self-capture */
+    rtsp_server_notify_uvc_stop();
 }
 
 /*

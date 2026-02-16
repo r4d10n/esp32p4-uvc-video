@@ -98,16 +98,21 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
     ESP_RETURN_ON_FALSE(ioctl(ctx->m2m_fd, VIDIOC_REQBUFS, &req) == 0,
                         ESP_FAIL, TAG, "REQBUFS output failed");
 
-    /* Configure H.264 encoder parameters before starting */
+    /* Configure H.264 encoder parameters before starting.
+     * Use ctx->h264_* fields if set (non-zero), otherwise defaults. */
     if (ctx->type == ENCODER_TYPE_H264) {
-        /* Scale bitrate with resolution */
-        int bitrate = (width >= 1920) ? 4000000 :
-                      (width >= 1280) ? 2500000 : 2000000;
+        int i_period = ctx->h264_i_period ? ctx->h264_i_period : 1;
+        int bitrate  = ctx->h264_bitrate  ? ctx->h264_bitrate  :
+                       ((width >= 1920) ? 4000000 :
+                        (width >= 1280) ? 2500000 : 2000000);
+        int min_qp   = ctx->h264_min_qp   ? ctx->h264_min_qp   : 20;
+        int max_qp   = ctx->h264_max_qp   ? ctx->h264_max_qp   : 40;
+
         struct v4l2_ext_control ctrls_arr[] = {
-            { .id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, .value = 1 },    /* every frame is IDR */
+            { .id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, .value = i_period },
             { .id = V4L2_CID_MPEG_VIDEO_BITRATE,       .value = bitrate },
-            { .id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,   .value = 20 },
-            { .id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,   .value = 40 },
+            { .id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP,   .value = min_qp },
+            { .id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP,   .value = max_qp },
         };
         struct v4l2_ext_controls ctrls = {
             .ctrl_class = V4L2_CID_CODEC_CLASS,
@@ -117,8 +122,8 @@ esp_err_t encoder_start(encoder_ctx_t *ctx, uint32_t width, uint32_t height, uin
         if (ioctl(ctx->m2m_fd, VIDIOC_S_EXT_CTRLS, &ctrls) != 0) {
             ESP_LOGW(TAG, "H.264 ext ctrls set failed (non-fatal)");
         } else {
-            ESP_LOGI(TAG, "H.264: GOP=1 (all IDR), bitrate=%dkbps, QP=20-40",
-                     bitrate / 1000);
+            ESP_LOGI(TAG, "H.264: GOP=%d, bitrate=%dkbps, QP=%d-%d",
+                     i_period, bitrate / 1000, min_qp, max_qp);
         }
     }
 

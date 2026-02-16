@@ -7,25 +7,36 @@
  *
  * Supports one client at a time with UDP unicast RTP transport.
  * Methods: OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN.
+ *
+ * Self-capture mode: when no UVC stream is active, the RTSP server
+ * drives the camera and H.264 encoder directly. When UVC starts,
+ * RTSP yields the hardware and relies on feed_h264() from UVC.
  */
 
 #include "rtsp_server.h"
 #include "rtp_sender.h"
+#include "uvc_streaming.h"
+#include "uvc_frame_config.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "lwip/sockets.h"
 #include "esp_netif.h"
+#include "linux/videodev2.h"
 
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ioctl.h>
 
 static const char *TAG = "rtsp";
 
-#define RTSP_PORT           554
+#include "sdkconfig.h"
+
+#define RTSP_PORT           CONFIG_ETH_RTSP_PORT
 #define RTSP_BUF_SIZE       2048
 #define RTSP_STACK_SIZE     8192
 #define RTSP_TASK_PRIO      10
@@ -53,7 +64,12 @@ static struct {
     SemaphoreHandle_t frame_mutex;
 } s_rtsp;
 
-/* ---- H.264 frame feeding ------------------------------------------------ */
+/* Self-capture: borrow UVC's camera + H.264 encoder when UVC is idle */
+static uvc_stream_ctx_t *s_uvc_ctx;
+static volatile bool      s_uvc_streaming;       /* true when UVC owns camera */
+static volatile bool      s_self_capture_active;  /* true while self-capture loop runs */
+
+/* ---- H.264 frame feeding (from UVC pipeline) ---------------------------- */
 
 void rtsp_server_feed_h264(const uint8_t *data, size_t len)
 {
@@ -61,7 +77,7 @@ void rtsp_server_feed_h264(const uint8_t *data, size_t len)
         return;
     }
 
-    /* Copy frame under mutex — drop if mutex busy (non-blocking) */
+    /* Copy frame under mutex -- drop if mutex busy (non-blocking) */
     if (xSemaphoreTake(s_rtsp.frame_mutex, 0) == pdTRUE) {
         size_t copy_len = (len > RTSP_FRAME_BUF_SIZE) ? RTSP_FRAME_BUF_SIZE : len;
         memcpy(s_rtsp.frame_buf, data, copy_len);
@@ -72,6 +88,29 @@ void rtsp_server_feed_h264(const uint8_t *data, size_t len)
         xSemaphoreGive(s_rtsp.frame_ready);
     }
     /* else: RTP sender is busy with previous frame, drop this one */
+}
+
+/* ---- UVC coordination --------------------------------------------------- */
+
+void rtsp_server_notify_uvc_start(void)
+{
+    s_uvc_streaming = true;
+    /* Wait for self-capture to finish (max ~500ms, typically < 50ms) */
+    for (int i = 0; i < 50 && s_self_capture_active; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    if (s_self_capture_active) {
+        ESP_LOGW(TAG, "Self-capture did not stop in time");
+    }
+}
+
+void rtsp_server_notify_uvc_stop(void)
+{
+    s_uvc_streaming = false;
+    /* Wake RTP sender so it can start self-capture if PLAYING */
+    if (s_rtsp.state == RTSP_STATE_PLAYING) {
+        xSemaphoreGive(s_rtsp.frame_ready);
+    }
 }
 
 /* ---- RTSP protocol helpers ---------------------------------------------- */
@@ -225,6 +264,9 @@ static void handle_play(int fd, int cseq)
              cseq, (unsigned long)s_rtsp.session_id);
     send_response(fd, resp);
 
+    /* Wake RTP sender to check for self-capture */
+    xSemaphoreGive(s_rtsp.frame_ready);
+
     ESP_LOGI(TAG, "PLAY: RTP streaming started");
 }
 
@@ -243,13 +285,91 @@ static void handle_teardown(int fd, int cseq)
     ESP_LOGI(TAG, "TEARDOWN: session ended");
 }
 
+/* ---- Self-capture: independent camera -> H.264 -> RTP loop -------------- */
+
+/*
+ * Runs when RTSP is PLAYING and no UVC stream is active.
+ * Borrows the shared camera and H.264 encoder from the UVC context.
+ * Exits when state changes or UVC claims the hardware.
+ */
+static void self_capture_loop(void)
+{
+    camera_ctx_t  *cam = &s_uvc_ctx->camera;
+    encoder_ctx_t *enc = &s_uvc_ctx->h264_enc;
+
+    /* Start camera in YUV420 mode (H.264 encoder input format) */
+    if (camera_start(cam, CAMERA_CAPTURE_WIDTH, CAMERA_CAPTURE_HEIGHT,
+                     V4L2_PIX_FMT_YUV420) != ESP_OK) {
+        ESP_LOGE(TAG, "Self-capture: camera start failed");
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        return;
+    }
+
+    /* Set RTSP-appropriate H.264 params BEFORE encoder_start (which sets
+     * them before STREAMON). UVC uses defaults (all-IDR), RTSP uses its own
+     * Kconfig values tuned for Ethernet streaming quality/latency. */
+    enc->h264_i_period = CONFIG_RTSP_H264_I_PERIOD;
+    enc->h264_bitrate  = CONFIG_RTSP_H264_BITRATE;
+    enc->h264_min_qp   = CONFIG_RTSP_H264_MIN_QP;
+    enc->h264_max_qp   = CONFIG_RTSP_H264_MAX_QP;
+
+    if (encoder_start(enc, CAMERA_CAPTURE_WIDTH, CAMERA_CAPTURE_HEIGHT,
+                      V4L2_PIX_FMT_YUV420) != ESP_OK) {
+        ESP_LOGE(TAG, "Self-capture: H.264 encoder start failed");
+        camera_stop(cam);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        return;
+    }
+
+    s_self_capture_active = true;
+    ESP_LOGI(TAG, "Self-capture: 1080p H.264 streaming to RTP");
+
+    while (s_rtsp.state == RTSP_STATE_PLAYING && !s_uvc_streaming) {
+        uint32_t buf_idx, bytesused;
+        if (camera_dequeue(cam, &buf_idx, &bytesused) != ESP_OK) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        uint8_t *enc_buf;
+        uint32_t enc_len;
+        esp_err_t ret = encoder_encode(enc, cam->cap_buffer[buf_idx],
+                                       bytesused, &enc_buf, &enc_len);
+        camera_enqueue(cam, buf_idx);
+
+        if (ret == ESP_OK && enc_len > 0) {
+            rtp_send_h264_frame(&s_rtsp.rtp, enc_buf, enc_len);
+
+            /* Re-queue encoder capture buffer for next encode */
+            struct v4l2_buffer qbuf = {
+                .index  = 0,
+                .type   = V4L2_BUF_TYPE_VIDEO_CAPTURE,
+                .memory = V4L2_MEMORY_MMAP,
+            };
+            ioctl(enc->m2m_fd, VIDIOC_QBUF, &qbuf);
+        }
+    }
+
+    encoder_stop(enc);
+    camera_stop(cam);
+
+    /* Reset H.264 params so UVC's next encoder_start uses defaults (all-IDR) */
+    enc->h264_i_period = 0;
+    enc->h264_bitrate  = 0;
+    enc->h264_min_qp   = 0;
+    enc->h264_max_qp   = 0;
+
+    s_self_capture_active = false;
+    ESP_LOGI(TAG, "Self-capture stopped");
+}
+
 /* ---- RTP sender task ---------------------------------------------------- */
 
 static void rtp_sender_task(void *arg)
 {
     ESP_LOGI(TAG, "RTP sender task started");
 
-    /* Temporary buffer for sending (avoid holding mutex during sendto) */
+    /* Temporary buffer for feed mode (avoid holding mutex during sendto) */
     uint8_t *send_buf = heap_caps_malloc(RTSP_FRAME_BUF_SIZE, MALLOC_CAP_SPIRAM);
     if (!send_buf) {
         ESP_LOGE(TAG, "Failed to allocate RTP send buffer");
@@ -258,7 +378,25 @@ static void rtp_sender_task(void *arg)
     }
 
     while (1) {
-        /* Wait for a new frame (or timeout to check for state changes) */
+        /* Wait until PLAY is active */
+        if (s_rtsp.state != RTSP_STATE_PLAYING) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        /*
+         * Self-capture mode: UVC is idle, drive camera + encoder directly.
+         * Returns when state changes or UVC claims the hardware.
+         */
+        if (!s_uvc_streaming && s_uvc_ctx) {
+            self_capture_loop();
+            continue;
+        }
+
+        /*
+         * Feed mode: UVC is streaming H.264, frames arrive via feed_h264().
+         * Wait for the next frame or timeout to re-check state.
+         */
         if (xSemaphoreTake(s_rtsp.frame_ready, pdMS_TO_TICKS(1000)) != pdTRUE) {
             continue;
         }
@@ -394,16 +532,20 @@ static void rtsp_server_task(void *arg)
 
 /* ---- Public API --------------------------------------------------------- */
 
-esp_err_t rtsp_server_start(void)
+esp_err_t rtsp_server_start(void *uvc_ctx)
 {
     memset(&s_rtsp, 0, sizeof(s_rtsp));
     s_rtsp.client_fd = -1;
     s_rtsp.state = RTSP_STATE_INIT;
 
+    s_uvc_ctx = (uvc_stream_ctx_t *)uvc_ctx;
+    s_uvc_streaming = false;
+    s_self_capture_active = false;
+
     /* Initialize RTP session */
     ESP_RETURN_ON_ERROR(rtp_session_init(&s_rtsp.rtp), TAG, "RTP init failed");
 
-    /* Allocate frame buffer in PSRAM */
+    /* Allocate frame buffer in PSRAM (used in feed mode) */
     s_rtsp.frame_buf = heap_caps_malloc(RTSP_FRAME_BUF_SIZE, MALLOC_CAP_SPIRAM);
     ESP_RETURN_ON_FALSE(s_rtsp.frame_buf, ESP_ERR_NO_MEM, TAG,
                         "Frame buffer alloc failed (%d bytes)", RTSP_FRAME_BUF_SIZE);
@@ -414,9 +556,9 @@ esp_err_t rtsp_server_start(void)
     ESP_RETURN_ON_FALSE(s_rtsp.frame_ready && s_rtsp.frame_mutex,
                         ESP_ERR_NO_MEM, TAG, "Semaphore create failed");
 
-    /* Start RTP sender task */
+    /* Start RTP sender task (increased stack for self-capture) */
     BaseType_t ret = xTaskCreate(rtp_sender_task, "rtp_sender",
-                                  4096, NULL, RTSP_TASK_PRIO, NULL);
+                                  8192, NULL, RTSP_TASK_PRIO, NULL);
     ESP_RETURN_ON_FALSE(ret == pdPASS, ESP_ERR_NO_MEM, TAG,
                         "RTP sender task create failed");
 
@@ -426,8 +568,8 @@ esp_err_t rtsp_server_start(void)
     ESP_RETURN_ON_FALSE(ret == pdPASS, ESP_ERR_NO_MEM, TAG,
                         "RTSP server task create failed");
 
-    ESP_LOGI(TAG, "RTSP server started (port %d, frame buf %dKB)",
-             RTSP_PORT, RTSP_FRAME_BUF_SIZE / 1024);
+    ESP_LOGI(TAG, "RTSP server started (port %d, self-capture enabled)",
+             RTSP_PORT);
 
     return ESP_OK;
 }

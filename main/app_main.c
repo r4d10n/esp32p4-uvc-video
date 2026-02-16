@@ -65,8 +65,8 @@ void app_main(void)
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Ethernet init failed: %s (RTSP unavailable)", esp_err_to_name(ret));
     } else {
-        /* Phase 6: Start RTSP server (listens on port 554) */
-        ret = rtsp_server_start();
+        /* Phase 6: Start RTSP server (listens on port 554, self-capture enabled) */
+        ret = rtsp_server_start(&stream_ctx);
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "RTSP server start failed: %s", esp_err_to_name(ret));
         }
